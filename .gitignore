@@ -1,0 +1,42 @@
+# Android build
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+*.log
+gen/
+out/
+build/
+.gradle/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Gradle
+gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# Codegraph / Claude
+.codegraph/
+.claude/
+
+# Reference
+参考/
+
+# Personal / internal files
+file_*.png
+school_*.json
+school_*.txt
+deep-research-report.md
+问题反馈/
+.reasonix/

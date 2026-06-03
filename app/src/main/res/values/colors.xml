@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#6699FF</color>
+    <color name="accent_light">#99BBFF</color>
+    <color name="accent_soft">#EEF3FF</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="card_border">#EEEEEE</color>
+    <color name="status_bar">#FFFFFF</color>
+    <color name="today_bg">#F5F7FF</color>
+    <color name="ic_launcher_background">#F6C84C</color>
+</resources>
