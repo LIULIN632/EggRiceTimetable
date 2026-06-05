@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.sp
 import com.eggrice.timetable.TimetableApplication
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.ui.theme.*
+import com.eggrice.timetable.ui.timetable.components.PetList
+import com.eggrice.timetable.ui.timetable.components.petEmoji
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -61,17 +63,18 @@ internal fun ImportMenuDialog(
     onBackupRestore: () -> Unit,
     onSchoolRequest: () -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("导入课表", fontWeight = FontWeight.ExtraBold) },
         text = {
             Column {
-                MenuRow(Icons.Outlined.Language, "教务系统导入", "推荐 · 自动识别课表", onClick = onJwImport)
-                HorizontalDivider(color = Divider, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                MenuRow(Icons.Outlined.Language, "教务系统导入", "推荐 · WebView + OkHttp 混合方案", onClick = onJwImport)
+                HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
                 MenuRow(Icons.Outlined.QrCode, "分享口令导入", "通过口令快速导入", onClick = onShareCodeImport)
                 MenuRow(Icons.Outlined.Description, "文件导入", "Excel / HTML / CSV / ICS", onClick = onFileImport)
                 MenuRow(Icons.Outlined.Restore, "从备份恢复", "导入备份文件", onClick = onBackupRestore)
-                HorizontalDivider(color = Divider, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
                 MenuRow(Icons.Outlined.AddTask, "申请学校适配", "未找到你的学校？", onClick = onSchoolRequest)
             }
         },
@@ -84,13 +87,15 @@ internal fun ImportMenuDialog(
 internal fun JwImportSubDialog(
     onDismiss: () -> Unit,
     onWebImport: () -> Unit,
-    onNativeImport: () -> Unit
+    onNativeImport: () -> Unit,
+    onFreeImport: () -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = TextPrimary,
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = colors.textPrimary,
                     modifier = Modifier.clickable(onClick = onDismiss).size(28.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("教务系统导入", fontWeight = FontWeight.ExtraBold)
@@ -98,8 +103,9 @@ internal fun JwImportSubDialog(
         },
         text = {
             Column {
-                MenuRow(Icons.Outlined.Public, "WebView教务导入", "推荐 · 支持正方/强智/青果/超星", onClick = onWebImport)
-                MenuRow(Icons.Outlined.CloudSync, "原生教务导入", "OkHttp直连 · 部分学校", onClick = onNativeImport)
+                MenuRow(Icons.Outlined.Public, "WebView教务导入（推荐）", "正方/强智/青果/超星 · Cookie持久化", onClick = onWebImport)
+                MenuRow(Icons.Outlined.Language, "通用导入（自定义地址）", "输入任意教务网址 · 自动适配", onClick = onFreeImport)
+                MenuRow(Icons.Outlined.CloudSync, "原生教务导入（实验性）", "OkHttp直连RSA加密登录 · 部分学校", onClick = onNativeImport)
             }
         },
         confirmButton = {},
@@ -115,11 +121,12 @@ internal fun FileImportSubDialog(
     onCsv: () -> Unit,
     onIcs: () -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = TextPrimary,
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = colors.textPrimary,
                     modifier = Modifier.clickable(onClick = onDismiss).size(28.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("文件导入", fontWeight = FontWeight.ExtraBold)
@@ -174,7 +181,7 @@ internal fun EditTextDialog(
     onDismiss: () -> Unit
 ) {
     var text by remember { mutableStateOf(currentValue) }
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(16.dp),
@@ -183,7 +190,7 @@ internal fun EditTextDialog(
                 Icon(
                     Icons.Outlined.Badge,
                     contentDescription = null,
-                    tint = accentColor(),
+                    tint = colors.accentMain,
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -195,15 +202,15 @@ internal fun EditTextDialog(
                 OutlinedTextField(
                     value = text,
                     onValueChange = { if (it.length <= maxLength) text = it },
-                    placeholder = { Text(hint, color = TextTertiary) },
+                    placeholder = { Text(hint, color = colors.textTertiary) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = accentColor(),
-                        cursorColor = accentColor(),
-                        focusedContainerColor = if (isDark) DarkSurface.copy(alpha = 0.5f) else Surface,
-                        unfocusedContainerColor = if (isDark) DarkSurface.copy(alpha = 0.5f) else Surface
+                        focusedBorderColor = colors.accentMain,
+                        cursorColor = colors.accentMain,
+                        focusedContainerColor = colors.surfaceBase.copy(alpha = 0.5f),
+                        unfocusedContainerColor = colors.surfaceBase.copy(alpha = 0.5f)
                     )
                 )
                 if (maxLength < Int.MAX_VALUE) {
@@ -211,7 +218,7 @@ internal fun EditTextDialog(
                     Text(
                         text = "${text.length}/$maxLength",
                         fontSize = 11.sp,
-                        color = TextTertiary,
+                        color = colors.textTertiary,
                         modifier = Modifier.align(Alignment.End)
                     )
                 }
@@ -220,14 +227,14 @@ internal fun EditTextDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(text); onDismiss() },
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor()),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Text("确定", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = TextSecondary) }
+            TextButton(onClick = onDismiss) { Text("取消", color = colors.textSecondary) }
         }
     )
 }
@@ -240,6 +247,7 @@ internal fun <T> OptionsDialog(
     onSelect: (T) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -256,10 +264,10 @@ internal fun <T> OptionsDialog(
                         RadioButton(
                             selected = selected == value,
                             onClick = { onSelect(value); onDismiss() },
-                            colors = RadioButtonDefaults.colors(selectedColor = accentColor())
+                            colors = RadioButtonDefaults.colors(selectedColor = colors.accentMain)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(label, fontSize = 15.sp, color = TextPrimary)
+                        Text(label, fontSize = 15.sp, color = colors.textPrimary)
                     }
                 }
             }
@@ -277,6 +285,7 @@ internal fun ShareCodeDialog(gson: Gson, app: TimetableApplication, onDismiss: (
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val colors = LocalEggRiceColors.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -286,17 +295,17 @@ internal fun ShareCodeDialog(gson: Gson, app: TimetableApplication, onDismiss: (
                 OutlinedTextField(
                     value = code,
                     onValueChange = { code = it; error = null },
-                    placeholder = { Text("粘贴分享口令", color = TextTertiary) },
+                    placeholder = { Text("粘贴分享口令", color = colors.textTertiary) },
                     singleLine = false,
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = accentColor(),
-                        cursorColor = accentColor()
+                        focusedBorderColor = colors.accentMain,
+                        cursorColor = colors.accentMain
                     )
                 )
                 if (error != null) {
-                    Text(error!!, color = DangerColor, fontSize = 13.sp)
+                    Text(error!!, color = colors.danger, fontSize = 13.sp)
                 }
             }
         },
@@ -325,7 +334,7 @@ internal fun ShareCodeDialog(gson: Gson, app: TimetableApplication, onDismiss: (
                     }
                 }
             ) {
-                Text("导入", color = accentColor())
+                Text("导入", color = colors.accentMain)
             }
         },
         dismissButton = {
@@ -343,15 +352,16 @@ internal fun FaqDialog(onDismiss: () -> Unit) {
         "如何分享课表？" to "在课程页面长按课程即可生成分享口令，好友可通过口令导入您的课表。",
         "如何切换深色模式？" to "在「通用设置」中可以选择浅色、深色或跟随系统三种模式。"
     )
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("常见问题") },
         text = {
             Column(modifier = Modifier.heightIn(max = 400.dp)) {
                 faqs.forEach { (q, a) ->
-                    Text(q, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text(q, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(a, fontSize = 13.sp, color = TextSecondary, lineHeight = 18.sp)
+                    Text(a, fontSize = 13.sp, color = colors.textSecondary, lineHeight = 18.sp)
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }
@@ -367,6 +377,7 @@ internal fun FaqDialog(onDismiss: () -> Unit) {
 internal fun FeedbackDialog(context: android.content.Context, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf("") }
     var contact by remember { mutableStateOf("") }
+    val colors = LocalEggRiceColors.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -376,24 +387,24 @@ internal fun FeedbackDialog(context: android.content.Context, onDismiss: () -> U
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
-                    placeholder = { Text("请输入您的反馈意见", color = TextTertiary) },
+                    placeholder = { Text("请输入您的反馈意见", color = colors.textTertiary) },
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = accentColor(),
-                        cursorColor = accentColor()
+                        focusedBorderColor = colors.accentMain,
+                        cursorColor = colors.accentMain
                     )
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = contact,
                     onValueChange = { contact = it },
-                    placeholder = { Text("联系方式（选填）", color = TextTertiary) },
+                    placeholder = { Text("联系方式（选填）", color = colors.textTertiary) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = accentColor(),
-                        cursorColor = accentColor()
+                        focusedBorderColor = colors.accentMain,
+                        cursorColor = colors.accentMain
                     )
                 )
             }
@@ -416,7 +427,7 @@ internal fun FeedbackDialog(context: android.content.Context, onDismiss: () -> U
                     }
                 }
             ) {
-                Text("提交", color = accentColor())
+                Text("提交", color = colors.accentMain)
             }
         },
         dismissButton = {
@@ -431,6 +442,7 @@ internal fun SchoolRequestDialog(context: android.content.Context, onDismiss: ()
     var systemType by remember { mutableStateOf("未知") }
     var expanded by remember { mutableStateOf(false) }
     val systems = listOf("未知", "正方", "强智", "青果", "超星", "其他")
+    val colors = LocalEggRiceColors.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -440,12 +452,12 @@ internal fun SchoolRequestDialog(context: android.content.Context, onDismiss: ()
                 OutlinedTextField(
                     value = schoolName,
                     onValueChange = { schoolName = it },
-                    placeholder = { Text("学校全称", color = TextTertiary) },
+                    placeholder = { Text("学校全称", color = colors.textTertiary) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = accentColor(),
-                        cursorColor = accentColor()
+                        focusedBorderColor = colors.accentMain,
+                        cursorColor = colors.accentMain
                     )
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -462,7 +474,7 @@ internal fun SchoolRequestDialog(context: android.content.Context, onDismiss: ()
                             }
                         },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = accentColor()
+                            focusedBorderColor = colors.accentMain
                         )
                     )
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -494,7 +506,7 @@ internal fun SchoolRequestDialog(context: android.content.Context, onDismiss: ()
                     }
                 }
             ) {
-                Text("提交申请", color = accentColor())
+                Text("提交申请", color = colors.accentMain)
             }
         },
         dismissButton = {
@@ -523,15 +535,16 @@ internal fun ShareExportDialog(gson: Gson, app: TimetableApplication, onDismiss:
         }
     }
 
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("分享口令") },
         text = {
             Column {
                 if (!generated) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = accentColor(), strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = colors.accentMain, strokeWidth = 2.dp)
                 } else {
-                    Text("复制以下口令分享给好友：", fontSize = 13.sp, color = TextSecondary)
+                    Text("复制以下口令分享给好友：", fontSize = 13.sp, color = colors.textSecondary)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = shareCode,
@@ -548,7 +561,7 @@ internal fun ShareExportDialog(gson: Gson, app: TimetableApplication, onDismiss:
                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("share_code", shareCode))
                             Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor()),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("复制口令") }
                 }
@@ -560,24 +573,126 @@ internal fun ShareExportDialog(gson: Gson, app: TimetableApplication, onDismiss:
 }
 
 @Composable
-internal fun AboutDialog(onDismiss: () -> Unit, context: android.content.Context) {
+internal fun PetManageDialog(
+    petIndex: Int,
+    petName: String,
+    onSelectPet: (Int) -> Unit,
+    onRenamePet: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalEggRiceColors.current
+    var editedName by remember { mutableStateOf(petName) }
+    var selectedIndex by remember { mutableIntStateOf(petIndex) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Pets, null, tint = colors.accentMain, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("我的宠物", fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                // Current pet preview
+                Box(
+                    modifier = Modifier.size(72.dp).clip(CircleShape).background(colors.surfaceHighlight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(petEmoji(selectedIndex), fontSize = 38.sp)
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Pet grid
+                Text("选择宠物", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.textSecondary,
+                    modifier = Modifier.align(Alignment.Start))
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    PetList.forEachIndexed { idx, pet ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                                .then(
+                                    if (selectedIndex == idx) Modifier.background(colors.accentMain.copy(alpha = 0.15f)) else Modifier.background(colors.surfaceAlt)
+                                )
+                                .clickable { selectedIndex = idx; editedName = pet.defaultName }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(pet.emoji, fontSize = 28.sp)
+                            Spacer(Modifier.height(2.dp))
+                            Text(pet.defaultName, fontSize = 10.sp, color = if (selectedIndex == idx) colors.accentMain else colors.textTertiary,
+                                fontWeight = if (selectedIndex == idx) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Name edit
+                OutlinedTextField(
+                    value = editedName,
+                    onValueChange = { if (it.length <= 8) editedName = it },
+                    label = { Text("宠物名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.accentMain,
+                        cursorColor = colors.accentMain,
+                        focusedContainerColor = colors.surfaceBase.copy(alpha = 0.5f),
+                        unfocusedContainerColor = colors.surfaceBase.copy(alpha = 0.5f)
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSelectPet(selectedIndex)
+                    onRenamePet(editedName.ifBlank { PetList[selectedIndex].defaultName })
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("确定", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消", color = colors.textSecondary) }
+        }
+    )
+}
+
+@Composable
+internal fun AboutDialog(
+    onDismiss: () -> Unit,
+    context: android.content.Context
+) {
     val versionName = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "未知" } catch (_: Exception) { "未知" }
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("关于蛋炒饭课程表") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(accentSoftColor()), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.School, null, tint = accentColor(), modifier = Modifier.size(32.dp))
+                Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(colors.surfaceHighlight), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.School, null, tint = colors.accentMain, modifier = Modifier.size(32.dp))
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("蛋炒饭课程表", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
-                Text("v$versionName", fontSize = 14.sp, color = TextSecondary)
+                Text("蛋炒饭课程表", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)
+                Text("v$versionName", fontSize = 14.sp, color = colors.textSecondary)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("纯净无广告 · 开源 · 免费", fontSize = 13.sp, color = TextTertiary)
-                Text("支持正方/强智/青果/超星教务系统", fontSize = 12.sp, color = TextTertiary)
+                Text("纯净无广告 · 开源 · 免费", fontSize = 13.sp, color = colors.textTertiary)
+                Text("支持正方/强智/青果/超星教务系统", fontSize = 12.sp, color = colors.textTertiary)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("所有数据仅存储在手机本地", fontSize = 12.sp, color = TextTertiary)
+                Text("所有数据仅存储在手机本地", fontSize = 12.sp, color = colors.textTertiary)
             }
         },
         confirmButton = {},

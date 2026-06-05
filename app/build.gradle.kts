@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,16 +8,35 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// ── Load keystore properties ──
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) {
+        load(FileInputStream(keystorePropsFile))
+    }
+}
+
 android {
     namespace = "com.eggrice.timetable"
     compileSdk = 34
+
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.eggrice.timetable"
         minSdk = 29
         targetSdk = 34
-        versionCode = 96
-        versionName = "7.6"
+        versionCode = 115
+        versionName = "7.25"
         resourceConfigurations.addAll(listOf("zh-rCN", "zh"))
     }
 
@@ -23,6 +45,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -41,9 +66,9 @@ android {
 }
 
 tasks.register("renameApk") {
-    dependsOn("assembleDebug")
+    dependsOn("assembleRelease")
     doLast {
-        val apk = file("build/outputs/apk/debug/app-debug.apk")
+        val apk = file("build/outputs/apk/release/app-release.apk")
         val dest = rootProject.file("蛋炒饭课程表_v${android.defaultConfig.versionName}.apk")
         apk.copyTo(dest, overwrite = true)
     }
@@ -87,6 +112,9 @@ dependencies {
 
     // AppCompat (for dark mode toggle)
     implementation("androidx.appcompat:appcompat:1.7.0")
+
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     // Core
     implementation("androidx.core:core-ktx:1.13.1")

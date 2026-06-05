@@ -4,6 +4,7 @@ import android.app.Application
 import com.eggrice.timetable.data.database.TimetableDatabase
 import com.eggrice.timetable.data.repository.CourseRepository
 import com.eggrice.timetable.di.AppContainer
+import com.eggrice.timetable.network.CookieStore
 import com.eggrice.timetable.util.CrashHandler
 
 class TimetableApplication : Application() {
@@ -15,5 +16,6 @@ class TimetableApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         crashHandler = CrashHandler(this)
+        CookieStore.init(this)
     }
 }

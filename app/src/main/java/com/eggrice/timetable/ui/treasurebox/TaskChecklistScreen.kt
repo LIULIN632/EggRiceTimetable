@@ -48,7 +48,7 @@ fun TaskChecklistScreen(
     schemeId: Long,
     onBack: () -> Unit
 ) {
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     val scope = rememberCoroutineScope()
 
     val tasks by repository.getTasksByScheme(schemeId).collectAsState(initial = emptyList())
@@ -78,11 +78,11 @@ fun TaskChecklistScreen(
                 },
                 actions = {
                     IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Filled.Add, "添加任务", tint = accentColor())
+                        Icon(Icons.Filled.Add, "添加任务", tint = colors.accentMain)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isDark) DarkSurfaceCard else SurfaceCard
+                    containerColor = colors.surfaceCard
                 )
             )
         }
@@ -91,7 +91,7 @@ fun TaskChecklistScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(if (isDark) DarkSurfaceAlt else SurfaceAlt)
+                .background(colors.surfaceAlt)
         ) {
             // ── Progress card ──
             Card(
@@ -99,7 +99,7 @@ fun TaskChecklistScreen(
                     .fillMaxWidth()
                     .padding(16.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard),
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceCard),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(
@@ -115,13 +115,13 @@ fun TaskChecklistScreen(
                         Text(
                             "任务进度",
                             fontSize = 13.sp,
-                            color = if (isDark) DarkTextSecondary else TextSecondary
+                            color = colors.textSecondary
                         )
                         Text(
                             "$completedCount / $totalCount",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = accentColor()
+                            color = colors.accentMain
                         )
                     }
 
@@ -133,8 +133,8 @@ fun TaskChecklistScreen(
                             .fillMaxWidth()
                             .height(8.dp)
                             .clip(RoundedCornerShape(4.dp)),
-                        color = accentColor(),
-                        trackColor = if (isDark) DarkSurfaceAlt else SurfaceAlt,
+                        color = colors.accentMain,
+                        trackColor = colors.surfaceAlt,
                     )
 
                     Spacer(Modifier.height(8.dp))
@@ -145,7 +145,7 @@ fun TaskChecklistScreen(
                         else if (progress > 0f) "好的开始，坚持下去！"
                         else "完成第一个任务，开启大学生活！",
                         fontSize = 12.sp,
-                        color = if (isDark) DarkTextTertiary else TextTertiary
+                        color = colors.textTertiary
                     )
                 }
             }
@@ -154,7 +154,7 @@ fun TaskChecklistScreen(
             Text(
                 if (completedCount > 0) "已完成 (${completedCount})" else "待完成",
                 fontSize = 12.sp,
-                color = if (isDark) DarkTextTertiary else TextTertiary,
+                color = colors.textTertiary,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
             )
 
@@ -168,7 +168,6 @@ fun TaskChecklistScreen(
                 items(sortedTasks, key = { it.id }) { task ->
                     TaskItem(
                         task = task,
-                        isDark = isDark,
                         onToggle = {
                             scope.launch {
                                 repository.updateTask(task.copy(completed = !task.completed))
@@ -202,10 +201,10 @@ fun TaskChecklistScreen(
 @Composable
 private fun TaskItem(
     task: TaskEntity,
-    isDark: Boolean,
     onToggle: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Card(
@@ -215,9 +214,9 @@ private fun TaskItem(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (task.completed)
-                (if (isDark) DarkSurfaceCard else SurfaceCard).copy(alpha = 0.5f)
+                colors.surfaceCard.copy(alpha = 0.5f)
             else
-                if (isDark) DarkSurfaceCard else SurfaceCard
+                colors.surfaceCard
         )
     ) {
         Row(
@@ -231,8 +230,8 @@ private fun TaskItem(
                 checked = task.completed,
                 onCheckedChange = { onToggle() },
                 colors = CheckboxDefaults.colors(
-                    checkedColor = accentColor(),
-                    uncheckedColor = if (isDark) DarkTextTertiary else TextTertiary
+                    checkedColor = colors.accentMain,
+                    uncheckedColor = colors.textTertiary
                 )
             )
             Text(
@@ -241,9 +240,9 @@ private fun TaskItem(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (task.completed)
-                    (if (isDark) DarkTextTertiary else TextTertiary).copy(alpha = 0.6f)
+                    colors.textTertiary.copy(alpha = 0.6f)
                 else
-                    if (isDark) DarkTextPrimary else TextPrimary,
+                    colors.textPrimary,
                 textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -255,7 +254,7 @@ private fun TaskItem(
                 Icon(
                     Icons.Outlined.Close,
                     "删除",
-                    tint = (if (isDark) DarkTextTertiary else TextTertiary).copy(alpha = 0.4f),
+                    tint = colors.textTertiary.copy(alpha = 0.4f),
                     modifier = Modifier.size(14.dp)
                 )
             }
@@ -270,7 +269,7 @@ private fun TaskItem(
             confirmButton = {
                 Button(
                     onClick = { onDelete(); showDeleteConfirm = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE57373))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC89098))
                 ) { Text("删除") }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } }
@@ -284,6 +283,7 @@ private fun AddTaskDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     var name by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -298,8 +298,8 @@ private fun AddTaskDialog(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = accentColor(),
-                    cursorColor = accentColor()
+                    focusedBorderColor = colors.accentMain,
+                    cursorColor = colors.accentMain
                 )
             )
         },
@@ -307,7 +307,7 @@ private fun AddTaskDialog(
             Button(
                 onClick = { onConfirm(name) },
                 enabled = name.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain)
             ) { Text("添加") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }

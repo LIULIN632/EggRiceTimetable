@@ -229,9 +229,23 @@ fun EggRiceTheme(
 
     val colorScheme = if (darkTheme) darkScheme else lightScheme
 
+    val eggRiceColors = when {
+        darkTheme && themeType == ThemeType.MATCHA_GREEN -> MatchaGreenDark
+        darkTheme && themeType == ThemeType.CHERRY_PINK -> CherryPinkDark
+        darkTheme && themeType == ThemeType.WISTERIA_PURPLE -> WisteriaPurpleDark
+        darkTheme && themeType == ThemeType.FRIED_RICE_YELLOW -> FriedRiceYellowDark
+        darkTheme -> SeaSaltBlueDark
+        themeType == ThemeType.MATCHA_GREEN -> MatchaGreenLight
+        themeType == ThemeType.CHERRY_PINK -> CherryPinkLight
+        themeType == ThemeType.WISTERIA_PURPLE -> WisteriaPurpleLight
+        themeType == ThemeType.FRIED_RICE_YELLOW -> FriedRiceYellowLight
+        else -> SeaSaltBlueLight
+    }
+
     CompositionLocalProvider(
         LocalDarkMode provides darkTheme,
-        LocalThemeType provides themeType
+        LocalThemeType provides themeType,
+        LocalEggRiceColors provides eggRiceColors
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

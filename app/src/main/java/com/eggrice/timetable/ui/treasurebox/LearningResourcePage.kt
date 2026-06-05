@@ -44,7 +44,7 @@ fun LearningResourcePage(
     val viewModel: TreasureBoxViewModel = viewModel(factory = TreasureBoxViewModel.Factory(app))
     val resources by viewModel.resources.collectAsState()
     val favorites by viewModel.favoriteIds.collectAsState()
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     var selectedSubject by remember { mutableStateOf("全部") }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -71,11 +71,11 @@ fun LearningResourcePage(
                 },
                 actions = {
                     IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Filled.Add, "添加资源", tint = accentColor())
+                        Icon(Icons.Filled.Add, "添加资源", tint = colors.accentMain)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isDark) DarkSurfaceCard else Color.White
+                    containerColor = colors.surfaceCard
                 )
             )
         }
@@ -84,13 +84,13 @@ fun LearningResourcePage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(if (isDark) DarkSurfaceAlt else SurfaceAlt)
+                .background(colors.surfaceAlt)
         ) {
             // Subject + favorite filter chips
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(if (isDark) DarkSurfaceCard else Color.White)
+                    .background(colors.surfaceCard)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -105,7 +105,7 @@ fun LearningResourcePage(
                             onClick = { selectedSubject = subject },
                             label = { Text(subject, fontSize = 12.sp) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = accentColor(),
+                                selectedContainerColor = colors.accentMain,
                                 selectedLabelColor = Color.White
                             )
                         )
@@ -123,7 +123,7 @@ fun LearningResourcePage(
                         )
                     },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFFFFB300),
+                        selectedContainerColor = Color(0xFFB8A060),
                         selectedLabelColor = Color.White
                     )
                 )
@@ -144,7 +144,6 @@ fun LearningResourcePage(
                         val isFav = resource.id in favorites
                         ResourceCard(
                             resource = resource,
-                            isDark = isDark,
                             isFavorite = isFav,
                             onOpenUrl = {
                                 try {
@@ -198,7 +197,6 @@ fun LearningResourcePage(
 @Composable
 private fun ResourceCard(
     resource: LearningResource,
-    isDark: Boolean,
     isFavorite: Boolean,
     onOpenUrl: () -> Unit,
     onToggleFavorite: () -> Unit,
@@ -206,21 +204,22 @@ private fun ResourceCard(
     onShare: () -> Unit,
     onDelete: (() -> Unit)?
 ) {
+    val colors = LocalEggRiceColors.current
     val subjectColor = when (resource.subject) {
-        "数学" -> Color(0xFF667EEA)
-        "编程" -> Color(0xFF43A047)
-        "英语" -> Color(0xFFEF5350)
-        "考研" -> Color(0xFFFF7043)
-        "设计" -> Color(0xFFAB47BC)
-        "通识" -> Color(0xFF26A69A)
-        else -> accentColor()
+        "数学" -> Color(0xFF8B94B8)
+        "编程" -> Color(0xFF7AA080)
+        "英语" -> Color(0xFFB8908C)
+        "考研" -> Color(0xFFC89A80)
+        "设计" -> Color(0xFFA088A8)
+        "通识" -> Color(0xFF78A098)
+        else -> colors.accentMain
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else Color.White)
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -242,7 +241,7 @@ private fun ResourceCard(
                     resource.courseName,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isDark) DarkTextPrimary else TextPrimary,
+                    color = colors.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -251,14 +250,14 @@ private fun ResourceCard(
                 if (isFavorite) {
                     Icon(
                         Icons.Filled.Star, "已收藏",
-                        tint = Color(0xFFFFB300),
+                        tint = Color(0xFFB8A060),
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                 }
                 if (onDelete != null) {
                     IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Outlined.Close, "删除", tint = TextTertiary, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Outlined.Close, "删除", tint = colors.textTertiary, modifier = Modifier.size(14.dp))
                     }
                 }
             }
@@ -266,13 +265,13 @@ private fun ResourceCard(
             Spacer(Modifier.height(6.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Person, null, tint = accentColor(), modifier = Modifier.size(14.dp))
+                Icon(Icons.Outlined.Person, null, tint = colors.accentMain, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(resource.blogger, fontSize = 12.sp, color = accentColor(), fontWeight = FontWeight.Medium)
+                Text(resource.blogger, fontSize = 12.sp, color = colors.accentMain, fontWeight = FontWeight.Medium)
             }
 
             Spacer(Modifier.height(4.dp))
-            Text(resource.description, fontSize = 12.sp, color = if (isDark) DarkTextSecondary else TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(resource.description, fontSize = 12.sp, color = colors.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
 
             Spacer(Modifier.height(10.dp))
 
@@ -298,17 +297,17 @@ private fun ResourceCard(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     modifier = Modifier.height(32.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = if (isFavorite) Color(0xFFFFF3CD) else accentSoftColor().copy(alpha = 0.5f)
+                        containerColor = if (isFavorite) Color(0xFFF0E8D0) else colors.surfaceHighlight.copy(alpha = 0.5f)
                     )
                 ) {
                     Icon(
                         if (isFavorite) Icons.Filled.Star else Icons.Outlined.Star,
                         null,
-                        tint = if (isFavorite) Color(0xFFFFB300) else accentColor(),
+                        tint = if (isFavorite) Color(0xFFB8A060) else colors.accentMain,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text(if (isFavorite) "已收藏" else "收藏", fontSize = 11.sp, color = if (isFavorite) Color(0xFFE6A000) else accentColor())
+                    Text(if (isFavorite) "已收藏" else "收藏", fontSize = 11.sp, color = if (isFavorite) Color(0xFF9A8040) else colors.accentMain)
                 }
                 Spacer(Modifier.width(6.dp))
                 // Import to timetable button
@@ -316,7 +315,7 @@ private fun ResourceCard(
                     onClick = onImport,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     modifier = Modifier.height(32.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = accentSoftColor())
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.surfaceHighlight)
                 ) {
                     Icon(Icons.Outlined.AddCircle, null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
@@ -328,7 +327,7 @@ private fun ResourceCard(
                     onClick = onShare,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     modifier = Modifier.height(32.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = accentSoftColor())
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.surfaceHighlight)
                 ) {
                     Icon(Icons.Outlined.Share, null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
@@ -345,6 +344,7 @@ private fun AddResourceDialog(
     onDismiss: () -> Unit,
     onConfirm: (LearningResource) -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     var subject by remember { mutableStateOf("自定义") }
     var courseName by remember { mutableStateOf("") }
     var blogger by remember { mutableStateOf("") }
@@ -439,7 +439,7 @@ private fun AddResourceDialog(
                     ))
                 },
                 enabled = courseName.isNotBlank() && blogger.isNotBlank() && videoUrl.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain)
             ) { Text("添加") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }

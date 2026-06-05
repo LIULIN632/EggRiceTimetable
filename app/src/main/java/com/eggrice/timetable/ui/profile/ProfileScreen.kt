@@ -1,11 +1,14 @@
 package com.eggrice.timetable.ui.profile
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,6 +31,7 @@ import com.eggrice.timetable.ui.profile.components.*
 import com.eggrice.timetable.ui.treasurebox.TreasureBoxScreen
 import com.eggrice.timetable.ui.timetable.components.SchemeManagerDialog
 import com.eggrice.timetable.ui.theme.*
+import com.eggrice.timetable.util.CalendarExportUtil
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -47,6 +51,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
 
     // ── Dialog states ──
     var showNicknameDialog by remember { mutableStateOf(false) }
+    var showPetDialog by remember { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
     var showCornerRadiusDialog by remember { mutableStateOf(false) }
     var showColorThemeDialog by remember { mutableStateOf(false) }
@@ -69,6 +74,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showFeatureToggles by remember { mutableStateOf(false) }
     var showImportScreen by remember { mutableStateOf(false) }
     var showWebImportScreen by remember { mutableStateOf(false) }
+    var freeImportMode by remember { mutableStateOf(false) }
     var showTreasureBoxDialog by remember { mutableStateOf(false) }
     var showSchemeManager by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -79,17 +85,21 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showSemesterSettings by remember { mutableStateOf(false) }
 
     // Sub-page visibility tracking — hide bottom nav + handle system back
+    // Includes dialog states so system back can dismiss dialogs properly
     val hasSubPage = showImportScreen || showWebImportScreen || showTreasureBoxDialog
             || showSettingsMain || showTimeSlotManagement || showSemesterSettings || showChangelog
             || showFeatureToggles || showGeneralSettings || showAppearanceDialog
+            || showImportMenu || showJwImportSub || showFileImportSub || showShareMenu
 
     LaunchedEffect(hasSubPage) { onSubPageChange(hasSubPage) }
 
     BackHandler(enabled = hasSubPage) {
         when {
-            showImportScreen -> showImportScreen = false
-            showWebImportScreen -> showWebImportScreen = false
+            // Sub-pages → go back to parent dialog/menu
+            showImportScreen -> { showImportScreen = false; showImportMenu = true }
+            showWebImportScreen -> { showWebImportScreen = false; freeImportMode = false; showImportMenu = true }
             showTreasureBoxDialog -> showTreasureBoxDialog = false
+            // Settings sub-pages
             showSettingsMain -> showSettingsMain = false
             showTimeSlotManagement -> showTimeSlotManagement = false
             showSemesterSettings -> showSemesterSettings = false
@@ -97,15 +107,24 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             showFeatureToggles -> showFeatureToggles = false
             showGeneralSettings -> showGeneralSettings = false
             showAppearanceDialog -> showAppearanceDialog = false
+            // Sub-dialogs → back to ImportMenu
+            showJwImportSub -> { showJwImportSub = false; showImportMenu = true }
+            showFileImportSub -> { showFileImportSub = false; showImportMenu = true }
+            // Top-level dialogs → dismiss
+            showImportMenu -> showImportMenu = false
+            showShareMenu -> showShareMenu = false
         }
     }
 
     if (showImportScreen) {
-        ImportScreen(onBack = { showImportScreen = false })
+        ImportScreen(onBack = { showImportScreen = false; showImportMenu = true })
         return
     }
     if (showWebImportScreen) {
-        WebImportScreen(onBack = { showWebImportScreen = false })
+        WebImportScreen(
+            onBack = { showWebImportScreen = false; freeImportMode = false; showImportMenu = true },
+            freeMode = freeImportMode
+        )
         return
     }
     if (showTreasureBoxDialog) {
@@ -160,6 +179,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
         return
     }
     val nickname by container.nickname.collectAsState()
+    val school by container.school.collectAsState()
     val showTeacher by container.showTeacher.collectAsState()
     val showRoom by container.showRoom.collectAsState()
     val showCampus by container.showCampus.collectAsState()
@@ -178,13 +198,18 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     val gridOpacity by container.gridOpacity.collectAsState()
     val gridTextSize by container.gridTextSize.collectAsState()
     val borderStyle by container.borderStyle.collectAsState()
+    val petIndex by container.petIndex.collectAsState()
+    val petName by container.petName.collectAsState()
     val showNonCurrentWeek by container.showNonCurrentWeek.collectAsState()
     val gridBgColor by container.gridBgColor.collectAsState()
     val otherWeekAlpha by container.otherWeekAlpha.collectAsState()
+    val wallpaperUri by container.wallpaperUri.collectAsState()
     val showTreasureBox by container.showTreasureBox.collectAsState()
     val showWidget by container.showWidget.collectAsState()
     val allSchemes by app.repository.allSchemes.collectAsState(emptyList())
     val activeSchemeId by container.activeSchemeId.collectAsState()
+
+    val colors = LocalEggRiceColors.current
 
     // ── File pickers ──
     val excelLauncher = rememberLauncherForActivityResult(
@@ -282,17 +307,40 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
         }
     }
 
+    // ── Calendar permission launcher ──
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            exportToCalendar(app, container, scope, context)
+        } else {
+            Toast.makeText(context, "需要日历权限才能导入课表", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val onImportToCalendar: () -> Unit = {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR)
+            == PackageManager.PERMISSION_GRANTED) {
+            exportToCalendar(app, container, scope, context)
+        } else {
+            calendarPermissionLauncher.launch(Manifest.permission.WRITE_CALENDAR)
+        }
+    }
+
     // ── Settings sub-pages (need state, render before main content) ──
     if (showGeneralSettings) {
         GeneralSettingsScreen(
             darkMode = darkMode,
             vibrationMode = vibrationMode,
             colorTheme = colorTheme,
+            borderStyle = borderStyle,
             onBack = { showGeneralSettings = false },
             onDarkMode = { showGeneralSettings = false; showDarkModeDialog = true },
             onVibrationMode = { showGeneralSettings = false; showVibrationModeDialog = true },
             onColorTheme = { showGeneralSettings = false; showColorThemeDialog = true },
-            onFeatureToggles = { showGeneralSettings = false; showFeatureToggles = true }
+            onFeatureToggles = { showGeneralSettings = false; showFeatureToggles = true },
+            onImportToCalendar = onImportToCalendar,
+            onBorderStyle = { container.setBorderStyle(it) }
         )
         return
     }
@@ -321,9 +369,9 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             gridTextSize = gridTextSize,
             showNonCurrentWeek = showNonCurrentWeek,
             showOddEven = showOddEven,
-            colorTheme = colorTheme,
             gridBgColor = gridBgColor,
             otherWeekAlpha = otherWeekAlpha,
+            wallpaperUri = wallpaperUri,
             onBack = { showAppearanceDialog = false }
         )
         return
@@ -342,7 +390,19 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             item {
                 UserProfileArea(
                     nickname = nickname,
+                    school = school,
                     onEditNickname = { showNicknameDialog = true }
+                )
+            }
+
+            item { SpacerH(6) }
+
+            // ━━━━ Pet area ━━━━
+            item {
+                PetArea(
+                    petIndex = petIndex,
+                    petName = petName,
+                    onClick = { showPetDialog = true }
                 )
             }
 
@@ -366,9 +426,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                         text = "分享",
                         icon = Icons.Outlined.Share,
                         modifier = Modifier.weight(1f),
-                        onClick = { showShareMenu = true },
-                        containerColor = accentSoftColor(),
-                        contentColor = accentColor()
+                        onClick = { showShareMenu = true }
                     )
                 }
             }
@@ -385,9 +443,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                         text = "课表设置",
                         icon = Icons.Outlined.GridView,
                         modifier = Modifier.weight(1f),
-                        onClick = { showSettingsMain = true },
-                        containerColor = accentSoftColor(),
-                        contentColor = accentColor()
+                        onClick = { showSettingsMain = true }
                     )
                     DualButton(
                         text = "通用设置",
@@ -461,6 +517,16 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             maxLength = 12,
             onConfirm = { container.setNickname(it.ifBlank { "同学" }) },
             onDismiss = { showNicknameDialog = false }
+        )
+    }
+
+    if (showPetDialog) {
+        PetManageDialog(
+            petIndex = petIndex,
+            petName = petName,
+            onSelectPet = { container.setPetIndex(it) },
+            onRenamePet = { name -> container.setPetName(name) },
+            onDismiss = { showPetDialog = false }
         )
     }
 
@@ -617,8 +683,9 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     if (showJwImportSub) {
         JwImportSubDialog(
             onDismiss = { showJwImportSub = false; showImportMenu = true },
-            onWebImport = { showJwImportSub = false; showWebImportScreen = true },
-            onNativeImport = { showJwImportSub = false; showImportScreen = true }
+            onWebImport = { showJwImportSub = false; freeImportMode = false; showWebImportScreen = true },
+            onNativeImport = { showJwImportSub = false; showImportScreen = true },
+            onFreeImport = { showJwImportSub = false; freeImportMode = true; showWebImportScreen = true }
         )
     }
 
@@ -849,4 +916,45 @@ private fun parseBackup(context: android.content.Context, uri: Uri, gson: Gson):
         return emptyList()
     }
     return emptyList()
+}
+
+private fun exportToCalendar(
+    app: TimetableApplication,
+    container: com.eggrice.timetable.di.AppContainer,
+    scope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context
+) {
+    scope.launch {
+        val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val courses = app.repository.getCoursesByScheme(container.activeSchemeId.value).firstOrNull() ?: emptyList()
+                if (courses.isEmpty()) {
+                    "暂无课程可导入"
+                } else {
+                    val startStr = container.semesterStart.value
+                    if (startStr.isBlank() || !startStr.contains("-")) {
+                        "请先在设置中配置学期开始日期"
+                    } else {
+                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                        val startDate = sdf.parse(startStr) ?: return@withContext "日期解析失败"
+                        val weeks = container.semesterWeeks.value
+                        val cal = java.util.Calendar.getInstance().apply {
+                            time = startDate
+                            add(java.util.Calendar.DAY_OF_MONTH, weeks * 7)
+                        }
+                        val endDate = cal.timeInMillis
+                        val count = CalendarExportUtil.exportToCalendar(
+                            context, courses, startDate.time, endDate
+                        )
+                        "已导入 $count 门课程到系统日历"
+                    }
+                }
+            } catch (e: Exception) {
+                "导入失败: ${e.message}"
+            }
+        }
+        withContext(kotlinx.coroutines.Dispatchers.Main) {
+            android.widget.Toast.makeText(context, result, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 }

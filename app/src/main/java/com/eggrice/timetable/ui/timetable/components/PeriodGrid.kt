@@ -51,9 +51,9 @@ fun PeriodGrid(
     showSlotTime: Boolean,
     showDashedBorder: Boolean,
     textCentered: Boolean,
-    gridHeight: Int,
+    gridHeightProvider: () -> Int,
     cornerRadius: Int,
-    gridOpacity: Float,
+    gridOpacityProvider: () -> Float,
     gridTextSize: Int,
     showOddEven: Boolean,
     borderStyle: Int = 0,
@@ -61,7 +61,7 @@ fun PeriodGrid(
     showNonCurrentWeek: Boolean = true,
     vibrationMode: Int = 1,
     gridBgColor: Int = -1,
-    otherWeekAlpha: Float = 0.18f,
+    otherWeekAlpha: Float = 0.50f,
     homeworkCourseNames: Set<String> = emptySet(),
     onCourseClick: (CourseEntity) -> Unit,
     onEmptyCellClick: (Int, Int) -> Unit,
@@ -74,6 +74,7 @@ fun PeriodGrid(
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
     val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val vibrator = remember { context.getSystemService(android.os.Vibrator::class.java) }
 
@@ -87,7 +88,8 @@ fun PeriodGrid(
             vibrator.vibrate(android.os.VibrationEffect.createOneShot(duration, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
         } catch (_: SecurityException) { }
     }
-    val safeGridHeight = gridHeight.coerceAtLeast(1)
+    val safeGridHeight = gridHeightProvider().coerceAtLeast(1)
+    val gridOpacity = gridOpacityProvider()
 
     val currentPeriod = remember(now, timeSlots) {
         if (!isCurrentWeek) -1
@@ -178,9 +180,8 @@ fun PeriodGrid(
                                 .fillMaxHeight()
                                 .onSizeChanged { sidebarWidthPx = it.width.toFloat() }
                                 .background(
-                                    if (isCurrentPeriod) accentColor().copy(alpha = if (isDark) 0.18f else 0.12f)
-                                    else if (isDark) DarkSurfaceCard
-                                    else SurfaceCard
+                                    if (isCurrentPeriod) colors.accentMain.copy(alpha = if (isDark) 0.18f else 0.12f)
+                                    else colors.surfaceCard
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
@@ -189,15 +190,14 @@ fun PeriodGrid(
                                     text = slot.slot.toString(),
                                     fontSize = 12.sp,
                                     fontWeight = if (isCurrentPeriod) FontWeight.ExtraBold else FontWeight.Bold,
-                                    color = if (isCurrentPeriod) accentColor()
-                                        else if (isDark) DarkTextSecondary
-                                        else TextSecondary
+                                    color = if (isCurrentPeriod) colors.accentMain
+                                        else colors.textSecondary
                                 )
                                 if (showSlotTime) {
                                     Text(
                                         text = slot.startTime,
                                         fontSize = 10.sp,
-                                        color = if (isDark) DarkTextTertiary else TextTertiary
+                                        color = colors.textTertiary
                                     )
                                 }
                             }
@@ -214,19 +214,8 @@ fun PeriodGrid(
                                     .fillMaxHeight()
                                     .padding(horizontal = 1.dp)
                                     .then(
-                                        when (borderStyle) {
-                                            1 -> Modifier.drawBehind {
-                                                drawRoundRect(color = if (isDark) BorderDark else BorderLight, cornerRadius = CornerRadius(4.dp.toPx()), style = Stroke(width = 1.dp.toPx()))
-                                            }
-                                            2 -> Modifier.drawBehind {
-                                                drawRoundRect(color = if (isDark) BorderDark else BorderLight, cornerRadius = CornerRadius(4.dp.toPx()), style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 4f), 0f)))
-                                            }
-                                            else -> Modifier
-                                        }
-                                    )
-                                    .then(
                                         if (isDragTarget) {
-                                            val dragAccent = accentColor()
+                                            val dragAccent = colors.accentMain
                                             Modifier.drawBehind {
                                                 drawRoundRect(color = dragAccent.copy(alpha = 0.35f), cornerRadius = CornerRadius(4.dp.toPx()), size = size)
                                                 drawRoundRect(color = dragAccent, cornerRadius = CornerRadius(4.dp.toPx()), size = size, style = Stroke(width = 2.dp.toPx()))
@@ -236,13 +225,31 @@ fun PeriodGrid(
                                     )
                                     .then(
                                         if (isCurrentPeriod)
-                                            Modifier.background(accentColor().copy(alpha = if (isDark) 0.10f else 0.08f), RoundedCornerShape(4.dp))
+                                            Modifier.background(colors.accentMain.copy(alpha = if (isDark) 0.10f else 0.08f), RoundedCornerShape(4.dp))
                                         else Modifier
                                     )
                                     .then(
                                         if (gridBgColor >= 0 && gridBgColor < GridBgPalette.size) {
                                             val (lightBg, darkBg) = GridBgPalette[gridBgColor]
                                             Modifier.background(if (isDark) darkBg else lightBg, RoundedCornerShape(4.dp))
+                                        } else Modifier
+                                    )
+                                    .then(
+                                        if (borderStyle > 0) {
+                                            val cellBorderColor = if (isDark)
+                                                colors.borderDivider.copy(red = (colors.borderDivider.red * 1.8f).coerceIn(0f, 1f), green = (colors.borderDivider.green * 1.8f).coerceIn(0f, 1f), blue = (colors.borderDivider.blue * 1.8f).coerceIn(0f, 1f))
+                                            else
+                                                colors.borderDivider.copy(red = (colors.borderDivider.red * 0.7f).coerceIn(0f, 1f), green = (colors.borderDivider.green * 0.7f).coerceIn(0f, 1f), blue = (colors.borderDivider.blue * 0.7f).coerceIn(0f, 1f))
+                                            Modifier.drawBehind {
+                                                drawRoundRect(
+                                                    color = cellBorderColor,
+                                                    cornerRadius = CornerRadius(4.dp.toPx()),
+                                                    style = Stroke(
+                                                        width = 1.dp.toPx(),
+                                                        pathEffect = if (borderStyle == 2) PathEffect.dashPathEffect(floatArrayOf(8f, 4f), 0f) else null
+                                                    )
+                                                )
+                                            }
                                         } else Modifier
                                     )
                                     .clickable { triggerVibration(); onEmptyCellClick(day, slotNum) }
@@ -300,7 +307,7 @@ fun PeriodGrid(
                                             onCourseClick(course)
                                         }
                                     }
-                                    .padding(horizontal = if (overlapCount > 1) 3.dp else 5.dp, vertical = 2.dp),
+                                    .padding(4.dp),
                                 contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                             ) {
                                 CourseCardContent(course, textColor, true, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames, otherWeekAlpha)
@@ -392,7 +399,7 @@ fun PeriodGrid(
                                             onCourseClick(course)
                                         }
                                     }
-                                    .padding(horizontal = if (overlapCount > 1) 4.dp else 6.dp, vertical = 3.dp),
+                                    .padding(4.dp),
                                 contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                             ) {
                                 CourseCardContent(course, textColor, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames)
@@ -422,7 +429,7 @@ fun PeriodGrid(
                         .shadow(16.dp, RoundedCornerShape(cornerRadius.dp))
                         .clip(RoundedCornerShape(cornerRadius.dp))
                         .background(floatBg.copy(alpha = gridOpacity))
-                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                        .padding(4.dp),
                     contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                 ) {
                     CourseCardContent(course, floatText, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames)
@@ -444,27 +451,10 @@ private fun CourseCardContent(
     textCentered: Boolean,
     gridTextSize: Int,
     hasHomework: Boolean = false,
-    otherWeekAlpha: Float = 0.18f
+    otherWeekAlpha: Float = 0.50f
 ) {
     val nameAlpha = if (isNonCurrent) (otherWeekAlpha * 2.78f).coerceIn(0.3f, 1f) else 1f
     val infoAlpha = if (isNonCurrent) (otherWeekAlpha * 1.67f).coerceIn(0.2f, 0.8f) else 0.6f
-
-    val infoParts = mutableListOf<String>()
-    if (isNonCurrent) infoParts.add("非本周")
-    if (showTeacher && course.teacher.isNotEmpty()) infoParts.add(course.teacher)
-    if (showRoom && course.room.isNotEmpty()) {
-        val room = course.room
-        val displayRoom = if (!showCampus) {
-            val campusIdx = room.indexOf("校区")
-            if (campusIdx > 0) room.substring(campusIdx + 2).trimStart(' ', '·', '-')
-            else room
-        } else room
-        if (displayRoom.isNotEmpty()) infoParts.add(displayRoom)
-    }
-    if (showOddEven && course.weekType != "all") {
-        infoParts.add(if (course.weekType == "odd") "单周" else "双周")
-    }
-    val infoLine = infoParts.joinToString(" · ")
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -494,14 +484,58 @@ private fun CourseCardContent(
                 )
             }
         }
-        if (infoLine.isNotEmpty()) {
+        if (isNonCurrent) {
             Text(
-                text = infoLine,
+                text = "非本周",
                 color = textColor.copy(alpha = infoAlpha),
                 fontSize = (gridTextSize - 2).sp,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Clip,
-                softWrap = true,
+                softWrap = false,
+                textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (showTeacher && course.teacher.isNotEmpty()) {
+            Text(
+                text = course.teacher,
+                color = textColor.copy(alpha = infoAlpha),
+                fontSize = (gridTextSize - 2).sp,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
+                textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (showRoom && course.room.isNotEmpty()) {
+            val room = course.room
+            val displayRoom = if (!showCampus) {
+                val campusIdx = room.indexOf("校区")
+                if (campusIdx > 0) room.substring(campusIdx + 2).trimStart(' ', '·', '-')
+                else room
+            } else room
+            if (displayRoom.isNotEmpty()) {
+                Text(
+                    text = displayRoom,
+                    color = textColor.copy(alpha = infoAlpha),
+                    fontSize = (gridTextSize - 2).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    softWrap = false,
+                    textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+        if (showOddEven && course.weekType != "all") {
+            Text(
+                text = if (course.weekType == "odd") "单周" else "双周",
+                color = textColor.copy(alpha = infoAlpha),
+                fontSize = (gridTextSize - 2).sp,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
                 textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
                 modifier = Modifier.fillMaxWidth()
             )

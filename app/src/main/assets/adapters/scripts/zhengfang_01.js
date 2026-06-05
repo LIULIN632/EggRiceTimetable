@@ -296,6 +296,190 @@ async function saveCourses(parsedCourses) {
 }
 
 
+// ── Regex-based HTML parser (ported from Dawn-Course zhengfang.js) ──
+// Used as fallback when jQuery is not available
+function regexParseNewZhengfang(html) {
+    var courses = [];
+    var tdRegex = /<td[^>]*\bid\s*=\s*["']?(\d+)-(\d+)["']?[^>]*>([\s\S]*?)<\/td>/gi;
+    var match;
+
+    while ((match = tdRegex.exec(html)) !== null) {
+        var day = parseInt(match[1]);
+        if (day < 1 || day > 7) continue;
+        var cellContent = match[3];
+
+        var blocks = cellContent.split(/<div\s+class=["']?timetable_con/i);
+        for (var i = 1; i < blocks.length; i++) {
+            var blockHtml = '<div class="timetable_con' + blocks[i];
+
+            var name = "";
+            var teacher = "";
+            var location = "";
+            var weeksStr = "";
+            var sectionsStr = "";
+
+            // Extract name from .title element
+            var titleMatch = /<([a-zA-Z]+)[^>]*class=["']?title[^>]*>([\s\S]*?)<\/\1>/i.exec(blockHtml);
+            if (titleMatch) {
+                name = titleMatch[2].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+            } else {
+                var altMatch = /<u[^>]*class=["']?title[^>]*>([\s\S]*?)<\/u>/i.exec(blockHtml);
+                if (altMatch) name = altMatch[1].replace(/<[^>]*>/g, '').trim();
+            }
+
+            // Extract teacher from title="教师" or title="老师" span/font
+            var teacherMatch = /<span[^>]*title\s*=\s*["']?\s*(?:教师|老师)\s*["']?[^>]*>([\s\S]*?)<\/span>/i.exec(blockHtml);
+            if (teacherMatch) {
+                teacher = teacherMatch[1].replace(/<[^>]*>/g, '').trim();
+            }
+            if (!teacher) {
+                teacherMatch = /title\s*=\s*["']?\s*(?:教师|老师)\s*["']?[^>]*>[\s\S]*?<\/span>\s*<font[^>]*>([\s\S]*?)<\/font>/i.exec(blockHtml);
+                if (teacherMatch) teacher = teacherMatch[1].replace(/<[^>]*>/g, '').trim();
+            }
+
+            // Extract location
+            var locMatch = /<span[^>]*title\s*=\s*["']?\s*(?:上课地点|教室)\s*["']?[^>]*>([\s\S]*?)<\/span>/i.exec(blockHtml);
+            if (locMatch) {
+                location = locMatch[1].replace(/<[^>]*>/g, '').trim();
+            }
+            if (!location) {
+                locMatch = /title\s*=\s*["']?\s*(?:上课地点|教室)\s*["']?[^>]*>[\s\S]*?<\/span>\s*<font[^>]*>([\s\S]*?)<\/font>/i.exec(blockHtml);
+                if (locMatch) location = locMatch[1].replace(/<[^>]*>/g, '').trim();
+            }
+
+            // Extract time info from title="节/周"
+            var timeMatch = /<span[^>]*title\s*=\s*["']?节\/周\s*["']?[^>]*>([\s\S]*?)<\/span>/i.exec(blockHtml);
+            if (timeMatch) {
+                var timeText = timeMatch[1].replace(/<[^>]*>/g, '').trim();
+                var secMatch = /(\d+)\s*[-至~～—－]\s*(\d+)\s*节/.exec(timeText);
+                if (secMatch) sectionsStr = secMatch[1] + '-' + secMatch[2] + '节';
+                var weekMatch = /(\d+\s*[-至~～—－]\s*\d+\s*周[^\s]*)/.exec(timeText);
+                if (weekMatch) weeksStr = weekMatch[1];
+            }
+
+            // Fallback: pattern (X-X节) X周
+            var rawMatch = /[\(（](\d+(?:-\d+)?节)[\)）]\s*([^<]*周[^<]*)/i.exec(blockHtml);
+            if (rawMatch) {
+                sectionsStr = rawMatch[1];
+                weeksStr = rawMatch[2];
+            }
+
+            if (!name || !weeksStr || !sectionsStr) continue;
+
+            var weeks = parseWeeksOld(weeksStr);
+            var sections = parseSectionsOld(sectionsStr);
+            if (weeks.length === 0 || sections.length === 0) continue;
+
+            courses.push({
+                name: name,
+                teacher: teacher || '',
+                position: location || '',
+                day: day,
+                weeks: weeks,
+                startSection: sections[0],
+                endSection: sections[sections.length - 1]
+            });
+        }
+    }
+
+    // Also try list format
+    if (courses.length === 0) {
+        var listRegex = /<tr[^>]*>\s*<td[^>]*id=["']?jc_(\d+)-(\d+)-(\d+)["']?[^>]*>\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+        var listMatch;
+        while ((listMatch = listRegex.exec(html)) !== null) {
+            var listDay = parseInt(listMatch[1]);
+            var secStart = parseInt(listMatch[2]);
+            var secEnd = parseInt(listMatch[3]);
+            var listBlock = listMatch[4];
+
+            var listName = "";
+            var titleM = /<([a-zA-Z]+)[^>]*class=["']?title[^>]*>([\s\S]*?)<\/\1>/i.exec(listBlock);
+            if (titleM) listName = titleM[2].replace(/<[^>]*>/g, '').trim();
+
+            var listTeacher = "";
+            var listTeacherM = /<span[^>]*title\s*=\s*["']?\s*(?:教师|老师)\s*["']?[^>]*>([\s\S]*?)<\/span>/i.exec(listBlock);
+            if (listTeacherM) listTeacher = listTeacherM[1].replace(/<[^>]*>/g, '').trim();
+
+            var listLoc = "";
+            var listLocM = /<span[^>]*title\s*=\s*["']?\s*(?:上课地点|教室)\s*["']?[^>]*>([\s\S]*?)<\/span>/i.exec(listBlock);
+            if (listLocM) listLoc = listLocM[1].replace(/<[^>]*>/g, '').trim();
+
+            var weekMatch2 = /(\d+\s*[-至~～—－]\s*\d+\s*周[^\s]*)/i.exec(listBlock);
+            var listWeeks = weekMatch2 ? parseWeeksOld(weekMatch2[1]) : [];
+
+            if (listName && listWeeks.length > 0) {
+                courses.push({
+                    name: listName,
+                    teacher: listTeacher || '',
+                    position: listLoc || '',
+                    day: listDay,
+                    weeks: listWeeks,
+                    startSection: secStart,
+                    endSection: secEnd
+                });
+            }
+        }
+    }
+
+    return courses;
+}
+
+function parseWeeksOld(str) {
+    var weeks = [];
+    if (!str) return weeks;
+    var type = 0;
+    if (str.indexOf('单') > -1) type = 1;
+    if (str.indexOf('双') > -1) type = 2;
+    str = str.replace(/周数[:：]/g, '').replace(/共\d+周|共\d+次|共\d+节/g, '');
+    str = str.replace(/[至~～—－]/g, '-').replace(/周|单|双|\(|\)|（|）/g, '');
+    var parts = str.split(/[,，;、]/);
+    for (var pi = 0; pi < parts.length; pi++) {
+        var part = parts[pi].trim();
+        if (part.indexOf('-') > -1) {
+            var range = part.split('-');
+            var start = parseInt(range[0]);
+            var end = parseInt(range[1]);
+            if (!isNaN(start) && !isNaN(end)) {
+                for (var w = start; w <= end; w++) {
+                    if (type === 0 || (type === 1 && w % 2 !== 0) || (type === 2 && w % 2 === 0)) {
+                        weeks.push(w);
+                    }
+                }
+            }
+        } else if (part !== '') {
+            var week = parseInt(part);
+            if (!isNaN(week)) {
+                if (type === 0 || (type === 1 && week % 2 !== 0) || (type === 2 && week % 2 === 0)) {
+                    weeks.push(week);
+                }
+            }
+        }
+    }
+    return weeks.sort(function(a, b) { return a - b; });
+}
+
+function parseSectionsOld(str) {
+    var sections = [];
+    var s = str.replace(/第/g, '').replace(/节次[:：]/g, '').replace(/节/g, '').replace(/[\(（\)）]/g, '');
+    s = s.replace(/[至~～—－]/g, '-');
+    var parts = s.split('-');
+    var start = parseInt(parts[0]);
+    var end = parseInt(parts[1] || parts[0]);
+    if (!isNaN(start)) {
+        for (var sec = start; sec <= end; sec++) sections.push(sec);
+    }
+    return sections;
+}
+
+function regexScrapeAndParse() {
+    console.log('JS: 使用正则 HTML 解析器 (无需 jQuery)');
+    var html = document.documentElement.outerHTML;
+    var courses = regexParseNewZhengfang(html);
+    console.log('JS: 正则解析完成，共 ' + courses.length + ' 门课程');
+    if (courses.length === 0) return null;
+    return { courses: courses };
+}
+
 async function runImportFlow() {
     var alertConfirmed = await window.AndroidBridgePromise.showAlert(
         "教务系统课表导入",
@@ -307,18 +491,23 @@ async function runImportFlow() {
         return;
     }
 
-    if (typeof window.jQuery === 'undefined' && typeof $ === 'undefined') {
-        var errorMsg = "当前教务系统页面似乎没有加载 jQuery 库。本脚本依赖 jQuery 进行 DOM 解析。";
-        AndroidBridge.showToast(errorMsg);
-        await window.AndroidBridgePromise.showAlert("导入失败", errorMsg + "\n请尝试刷新页面或使用其他导入方式。", "确定");
-        console.error("JS: 缺少 jQuery 依赖，流程终止。");
-        return;
-    }
-    console.log('JS: jQuery 可用');
+    var result = null;
 
-    var result = await scrapeAndParseCourses();
+    // Try jQuery-based DOM scraping first (more accurate for dynamic content)
+    if (typeof window.jQuery !== 'undefined' || typeof $ !== 'undefined') {
+        console.log('JS: jQuery 可用，使用 DOM 解析');
+        result = await scrapeAndParseCourses();
+    }
+
+    // Fallback to regex-based HTML parsing (no jQuery needed)
+    if (result === null) {
+        console.log('JS: jQuery 不可用或 DOM 解析失败，使用正则 HTML 解析');
+        result = regexScrapeAndParse();
+    }
+
     if (result === null) {
         console.log("JS: 课程获取或解析失败，流程终止。");
+        AndroidBridge.showToast("未找到课程数据，请确认已登录并处于课表查询页面。");
         return;
     }
     var courses = result.courses;

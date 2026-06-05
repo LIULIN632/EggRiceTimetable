@@ -43,6 +43,7 @@ internal fun AppearanceDialog(
     onDismiss: () -> Unit
 ) {
     val savedCornerRadius by container.cornerRadius.collectAsState()
+    val colors = LocalEggRiceColors.current
     val isDark = LocalDarkMode.current
 
     var previewTeacher by remember { mutableStateOf(showTeacher) }
@@ -95,18 +96,18 @@ internal fun AppearanceDialog(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceAlt)
+                    colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("实时预览", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = if (isDark) DarkTextTertiary else TextTertiary)
+                        Text("实时预览", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = colors.textTertiary)
                         Spacer(Modifier.height(6.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(20.dp)) {
-                                Text("一", fontSize = 10.sp, color = TextTertiary)
+                                Text("一", fontSize = 10.sp, color = colors.textTertiary)
                                 Spacer(Modifier.height(2.dp))
-                                Text(if (previewSlotTime) "08:00" else "1", fontSize = 9.sp, color = TextTertiary)
+                                Text(if (previewSlotTime) "08:00" else "1", fontSize = 9.sp, color = colors.textTertiary)
                                 Spacer(Modifier.height(2.dp))
-                                Text(if (previewSlotTime) "08:45" else "2", fontSize = 9.sp, color = TextTertiary)
+                                Text(if (previewSlotTime) "08:45" else "2", fontSize = 9.sp, color = colors.textTertiary)
                             }
                             Box(
                                 modifier = Modifier.weight(1f).height(previewHeight.dp)
@@ -158,21 +159,21 @@ internal fun AppearanceDialog(
                 Spacer(Modifier.height(18.dp))
 
                 // ═══ Display settings ═══
-                Text("显示设置", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (isDark) DarkTextSecondary else TextSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
-                Surface(shape = RoundedCornerShape(12.dp), color = if (isDark) DarkSurfaceCard else SurfaceCard) {
+                Text("显示设置", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+                Surface(shape = RoundedCornerShape(12.dp), color = colors.surfaceCard) {
                     Column {
                         AppSwitchRow("显示教师", "在课程卡片上显示教师姓名", previewTeacher) { previewTeacher = it }
-                        HDiv(isDark)
+                        HDiv()
                         AppSwitchRow("显示教室", "在课程卡片上显示教学楼和教室", previewRoom) { previewRoom = it }
-                        HDiv(isDark)
+                        HDiv()
                         AppSwitchRow("显示校区", "导入课程时附带的校区信息", previewCampus) { previewCampus = it }
-                        HDiv(isDark)
+                        HDiv()
                         AppSwitchRow("显示节次时间", "左侧节次栏显示具体时间", previewSlotTime) { previewSlotTime = it }
-                        HDiv(isDark)
+                        HDiv()
                         AppSwitchRow("非本周课程", "非本周课程半透明显示", previewNonCurrentWeek) { previewNonCurrentWeek = it }
-                        HDiv(isDark)
+                        HDiv()
                         AppSwitchRow("文字居中", "课程文字居中对齐", previewCentered) { previewCentered = it }
-                        HDiv(isDark)
+                        HDiv()
                         AppSwitchRow("单双周标识", "在课程卡片上显示单双周", previewOddEven) { previewOddEven = it }
                     }
                 }
@@ -180,11 +181,11 @@ internal fun AppearanceDialog(
                 Spacer(Modifier.height(12.dp))
 
                 // ═══ Color theme ═══
-                Text("配色主题", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (isDark) DarkTextSecondary else TextSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
-                Surface(shape = RoundedCornerShape(12.dp), color = if (isDark) DarkSurfaceCard else SurfaceCard) {
+                Text("配色主题", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+                Surface(shape = RoundedCornerShape(12.dp), color = colors.surfaceCard) {
                     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("海盐蓝" to "default", "抹茶绿" to "matcha", "樱花粉" to "sakura", "紫藤紫" to "wisteria", "蛋炒饭" to "fried_rice").forEach { (label, theme) ->
-                            FilterChip(selected = previewColorTheme == theme, onClick = { previewColorTheme = theme }, label = { Text(label, fontSize = 12.sp) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentColor(), selectedLabelColor = Color.White))
+                            FilterChip(selected = previewColorTheme == theme, onClick = { previewColorTheme = theme }, label = { Text(label, fontSize = 12.sp) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.accentMain, selectedLabelColor = Color.White))
                         }
                     }
                 }
@@ -192,11 +193,11 @@ internal fun AppearanceDialog(
                 Spacer(Modifier.height(12.dp))
 
                 // ═══ Border style ═══
-                Text("边框样式", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (isDark) DarkTextSecondary else TextSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
-                Surface(shape = RoundedCornerShape(12.dp), color = if (isDark) DarkSurfaceCard else SurfaceCard) {
+                Text("边框样式", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+                Surface(shape = RoundedCornerShape(12.dp), color = colors.surfaceCard) {
                     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("无" to 0, "实线" to 1, "虚线" to 2).forEach { (label, style) ->
-                            FilterChip(selected = previewBorderStyle == style, onClick = { previewBorderStyle = style }, label = { Text(label, fontSize = 12.sp) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentColor(), selectedLabelColor = Color.White))
+                            FilterChip(selected = previewBorderStyle == style, onClick = { previewBorderStyle = style }, label = { Text(label, fontSize = 12.sp) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.accentMain, selectedLabelColor = Color.White))
                         }
                     }
                 }
@@ -204,13 +205,13 @@ internal fun AppearanceDialog(
                 Spacer(Modifier.height(20.dp))
 
                 // ═══ Sliders ═══
-                Text("参数调整", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (isDark) DarkTextSecondary else TextSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
-                Surface(shape = RoundedCornerShape(12.dp), color = if (isDark) DarkSurfaceCard else SurfaceCard) {
+                Text("参数调整", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+                Surface(shape = RoundedCornerShape(12.dp), color = colors.surfaceCard) {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        AppSliderRow("格子高度", "${previewHeight}dp", previewHeight.toFloat(), 56f..96f, isDark) { previewHeight = it.toInt() }
-                        AppSliderRow("卡片圆角", "${previewRadius}dp", previewRadius.toFloat(), 0f..16f, isDark) { previewRadius = it.toInt() }
-                        AppSliderRow("不透明度", "${(previewOpacity * 100).toInt()}%", previewOpacity, 0.5f..1.0f, isDark) { previewOpacity = it }
-                        AppSliderRow("文字大小", "${previewTextSize}sp", previewTextSize.toFloat(), 10f..16f, isDark) { previewTextSize = it.toInt() }
+                        AppSliderRow("格子高度", "${previewHeight}dp", previewHeight.toFloat(), 56f..96f) { previewHeight = it.toInt() }
+                        AppSliderRow("卡片圆角", "${previewRadius}dp", previewRadius.toFloat(), 0f..16f) { previewRadius = it.toInt() }
+                        AppSliderRow("不透明度", "${(previewOpacity * 100).toInt()}%", previewOpacity, 0.5f..1.0f) { previewOpacity = it }
+                        AppSliderRow("文字大小", "${previewTextSize}sp", previewTextSize.toFloat(), 10f..16f) { previewTextSize = it.toInt() }
                     }
                 }
 
@@ -220,39 +221,42 @@ internal fun AppearanceDialog(
                     onClick = { resetDefaults() },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerColor),
-                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = SolidColor(DangerColor.copy(alpha = 0.5f)))
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.danger),
+                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = SolidColor(colors.danger.copy(alpha = 0.5f)))
                 ) { Text("恢复默认设置", fontSize = 14.sp) }
                 Spacer(Modifier.height(8.dp))
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = { commitAll(); onDismiss() }) { Text("完成", fontWeight = FontWeight.Bold, color = accentColor()) } }
+        dismissButton = { TextButton(onClick = { commitAll(); onDismiss() }) { Text("完成", fontWeight = FontWeight.Bold, color = colors.accentMain) } }
     )
 }
 
 @Composable
 private fun AppSwitchRow(label: String, subtitle: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    val colors = LocalEggRiceColors.current
     val isDark = LocalDarkMode.current
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (isDark) DarkTextPrimary else TextPrimary)
-            Text(subtitle, fontSize = 11.sp, color = if (isDark) DarkTextTertiary else TextTertiary)
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = colors.textPrimary)
+            Text(subtitle, fontSize = 11.sp, color = colors.textTertiary)
         }
-        Switch(checked = checked, onCheckedChange = onToggle, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accentColor(), uncheckedThumbColor = if (isDark) BorderDark else Color.White, uncheckedTrackColor = if (isDark) BorderDark else BorderLight))
+        Switch(checked = checked, onCheckedChange = onToggle, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = colors.accentMain, uncheckedThumbColor = colors.surfaceCard, uncheckedTrackColor = colors.borderDivider))
     }
 }
 
 @Composable
-private fun AppSliderRow(label: String, valueLabel: String, value: Float, range: ClosedFloatingPointRange<Float>, isDark: Boolean, onValueChange: (Float) -> Unit) {
+private fun AppSliderRow(label: String, valueLabel: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
+    val colors = LocalEggRiceColors.current
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 14.sp, color = if (isDark) DarkTextPrimary else TextPrimary, modifier = Modifier.width(72.dp))
-        Slider(value = value, onValueChange = onValueChange, valueRange = range, steps = 0, colors = SliderDefaults.colors(thumbColor = accentColor(), activeTrackColor = accentColor(), inactiveTrackColor = if (isDark) DarkDivider else Divider), modifier = Modifier.weight(1f))
-        Text(valueLabel, fontSize = 12.sp, color = if (isDark) DarkTextTertiary else TextTertiary, modifier = Modifier.width(36.dp), textAlign = TextAlign.End)
+        Text(label, fontSize = 14.sp, color = colors.textPrimary, modifier = Modifier.width(72.dp))
+        Slider(value = value, onValueChange = onValueChange, valueRange = range, steps = 0, colors = SliderDefaults.colors(thumbColor = colors.accentMain, activeTrackColor = colors.accentMain, inactiveTrackColor = colors.borderDivider), modifier = Modifier.weight(1f))
+        Text(valueLabel, fontSize = 12.sp, color = colors.textTertiary, modifier = Modifier.width(36.dp), textAlign = TextAlign.End)
     }
 }
 
 @Composable
-private fun HDiv(isDark: Boolean) {
-    HorizontalDivider(color = if (isDark) DarkDivider else Divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 56.dp))
+private fun HDiv() {
+    val colors = LocalEggRiceColors.current
+    HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp, modifier = Modifier.padding(start = 56.dp))
 }

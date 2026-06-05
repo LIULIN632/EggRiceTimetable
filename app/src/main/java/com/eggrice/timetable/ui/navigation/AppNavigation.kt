@@ -45,11 +45,13 @@ fun AppNavigation() {
     val currentDestination = navBackStackEntry?.destination
     var isSubPage by remember { mutableStateOf(false) }
 
+    val colors = LocalEggRiceColors.current
+
     Scaffold(
         bottomBar = {
             if (!isSubPage) {
                 NavigationBar(
-                containerColor = SurfaceCard,
+                containerColor = colors.surfaceCard,
                 tonalElevation = 4.dp,
                 modifier = Modifier.shadow(12.dp).height(56.dp)
             ) {
@@ -69,7 +71,7 @@ fun AppNavigation() {
                                 item.icon,
                                 contentDescription = item.label,
                                 modifier = Modifier.size(20.dp),
-                                tint = if (selected) accentColor() else TextTertiary
+                                tint = if (selected) colors.accentMain else colors.textTertiary
                             )
                         },
                         label = {
@@ -77,11 +79,11 @@ fun AppNavigation() {
                                 item.label,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (selected) accentColor() else TextTertiary
+                                color = if (selected) colors.accentMain else colors.textTertiary
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = accentSoftColor()
+                            indicatorColor = colors.surfaceHighlight
                         )
                     )
                 }

@@ -1,6 +1,8 @@
 package com.eggrice.timetable.ui.timetable
 
+import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -11,13 +13,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.animation.core.animateFloatAsState
@@ -25,6 +28,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,6 +41,8 @@ import com.eggrice.timetable.data.entity.HomeworkEntity
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 import com.eggrice.timetable.ui.timetable.components.PeriodGrid
+import com.eggrice.timetable.ui.timetable.components.PetFAB
+import com.eggrice.timetable.ui.timetable.components.petEmoji
 import com.eggrice.timetable.ui.timetable.components.WeekHeader
 import com.eggrice.timetable.ui.timetable.components.HomeworkListDialog
 import com.eggrice.timetable.ui.timetable.components.AddHomeworkDialog
@@ -70,33 +77,58 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     val showSlotTime by container.showSlotTime.collectAsState()
     val showDashedBorder by container.showDashedBorder.collectAsState()
     val textCentered by container.textCentered.collectAsState()
-    val gridHeight by container.gridHeight.collectAsState()
     val cornerRadius by container.cornerRadius.collectAsState()
-    val gridOpacity by container.gridOpacity.collectAsState()
     val gridTextSize by container.gridTextSize.collectAsState()
     val showOddEven by container.showOddEven.collectAsState()
     val borderStyle by container.borderStyle.collectAsState()
+    val petIndexState by container.petIndex.collectAsState()
     val showNonCurrentWeek by container.showNonCurrentWeek.collectAsState()
     val vibrationMode by container.vibrationMode.collectAsState()
     val gridBgColor by container.gridBgColor.collectAsState()
     val otherWeekAlpha by container.otherWeekAlpha.collectAsState()
+    val wallpaperUri by container.wallpaperUri.collectAsState()
+
+    // Wallpaper bitmap loading
+    var wallpaperBitmap by remember(wallpaperUri) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(wallpaperUri) {
+        if (wallpaperUri.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val uri = android.net.Uri.parse(wallpaperUri)
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        BitmapFactory.decodeStream(stream)?.let { bitmap ->
+                            wallpaperBitmap = bitmap.asImageBitmap()
+                        }
+                    }
+                } catch (_: Exception) {
+                    wallpaperBitmap = null
+                }
+            }
+        } else {
+            wallpaperBitmap = null
+        }
+    }
 
     val today = LocalDate.now()
     val todayDay = today.dayOfWeek.value
     val semesterStart = container.semesterStart.collectAsState().value
     val autoWeek = container.autoCurrentWeek()
-    val isCurrentWeek = currentWeek == autoWeek
+    val isCurrentWeek by remember { derivedStateOf { currentWeek == container.autoCurrentWeek() } }
 
-    val startOfWeek = if (semesterStart.isNotBlank()) {
-        try {
-            val parts = semesterStart.split("-")
-            LocalDate.of(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
-                .plusWeeks((currentWeek - 1).toLong())
-        } catch (_: Exception) { today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong()) }
-    } else {
-        today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong())
+    val startOfWeek by remember(semesterStart, currentWeek, today, todayDay) {
+        derivedStateOf {
+            if (semesterStart.isNotBlank()) {
+                try {
+                    val parts = semesterStart.split("-")
+                    LocalDate.of(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
+                        .plusWeeks((currentWeek - 1).toLong())
+                } catch (_: Exception) { today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong()) }
+            } else {
+                today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong())
+            }
+        }
     }
-    val endOfWeek = startOfWeek.plusDays(6)
+    val endOfWeek by remember { derivedStateOf { startOfWeek.plusDays(6) } }
     val fmt = DateTimeFormatter.ofPattern("M/d")
 
     // Homework state
@@ -129,11 +161,14 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
         viewModel.goToToday()
     }
 
+    val colors = LocalEggRiceColors.current
     val isDark = LocalDarkMode.current
     val scope = rememberCoroutineScope()
 
+    val hasWallpaper = wallpaperBitmap != null
+
     Scaffold(
-        containerColor = if (isDark) DarkSurface else Surface,
+        containerColor = if (hasWallpaper) Color.Transparent else colors.surfaceBase,
         floatingActionButton = {
             // FAB press animation per MD spec
             var fabPressed by remember { mutableStateOf(false) }
@@ -152,7 +187,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                         },
                         icon = { Icon(Icons.Outlined.CalendarMonth, null, modifier = Modifier.size(20.dp)) },
                         text = { Text("回本周", fontSize = 13.sp, fontWeight = FontWeight.Bold) },
-                        containerColor = accentColor(),
+                        containerColor = colors.accentMain,
                         contentColor = Color.White,
                         elevation = FloatingActionButtonDefaults.elevation(
                             defaultElevation = 6.dp,
@@ -163,36 +198,34 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                     )
                     Spacer(Modifier.height(12.dp))
                 }
-                FloatingActionButton(
+                PetFAB(
+                    petEmoji = petEmoji(petIndexState),
                     onClick = {
                         fabPressed = true
-                        viewModel.openAddEditor()
+                        viewModel.goToToday()
                         fabPressed = false
-                    },
-                    containerColor = accentColor(),
-                    contentColor = Color.White,
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 12.dp
-                    ),
-                    shape = CircleShape,
-                    modifier = Modifier.scale(fabScale)
-                ) {
-                    Icon(Icons.Default.Add, "添加课程", modifier = Modifier.size(24.dp))
-                }
+                    }
+                )
             }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+        Box(
+            modifier = Modifier.fillMaxSize().padding(padding)
         ) {
+            if (hasWallpaper && wallpaperBitmap != null) {
+                Image(bitmap = wallpaperBitmap!!, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Box(modifier = Modifier.fillMaxSize().background(
+                    if (isDark) Color.Black.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.65f)
+                ))
+            }
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
             // ── Top bar: compact ──
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(if (isDark) DarkSurfaceCard else SurfaceCard)
+                    .background(colors.surfaceCard)
                     .padding(horizontal = 10.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -216,18 +249,18 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                         "第${currentWeek}周",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isDark) DarkTextPrimary else TextPrimary
+                        color = colors.textPrimary
                     )
                     Text(
                         "${startOfWeek.format(fmt)} - ${endOfWeek.format(fmt)}",
                         fontSize = 9.sp,
-                        color = if (isDark) DarkTextTertiary else TextTertiary
+                        color = colors.textTertiary
                     )
                 }
                 Spacer(Modifier.weight(1f))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { viewModel.prevWeek() }, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.ChevronLeft, "上一周", tint = accentColor(), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.ChevronLeft, "上一周", tint = colors.accentMain, modifier = Modifier.size(18.dp))
                     }
                     Button(
                         onClick = { viewModel.goToToday() },
@@ -235,12 +268,12 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                         modifier = Modifier.height(26.dp),
                         shape = RoundedCornerShape(13.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isCurrentWeek) accentSoftColor() else accentColor(),
-                            contentColor = if (isCurrentWeek) accentColor() else Color.White
+                            containerColor = if (isCurrentWeek) colors.surfaceHighlight else colors.accentMain,
+                            contentColor = if (isCurrentWeek) colors.accentMain else Color.White
                         )
                     ) { Text("今天", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     IconButton(onClick = { viewModel.nextWeek() }, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.ChevronRight, "下一周", tint = accentColor(), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.ChevronRight, "下一周", tint = colors.accentMain, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -258,7 +291,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(if (isDark) DarkDivider else Divider)
+                    .background(colors.borderDivider)
             )
 
             // ── Course grid ──
@@ -273,9 +306,9 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                 showSlotTime = showSlotTime,
                 showDashedBorder = showDashedBorder,
                 textCentered = textCentered,
-                gridHeight = gridHeight,
+                gridHeightProvider = { container.gridHeight.value },
                 cornerRadius = cornerRadius,
-                gridOpacity = gridOpacity,
+                gridOpacityProvider = { container.gridOpacity.value },
                 gridTextSize = gridTextSize,
                 showOddEven = showOddEven,
                 borderStyle = borderStyle,
@@ -290,6 +323,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                 onCourseMoved = { course, newDay, newSlot -> viewModel.updateCoursePosition(course, newDay, newSlot) },
                 modifier = Modifier.fillMaxWidth().weight(1f)
             )
+            }
         }
     }
 
@@ -383,6 +417,7 @@ fun CourseEditorDialog(
     onSave: (CourseEntity) -> Unit,
     onDelete: (CourseEntity) -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     var name by remember { mutableStateOf(course.name) }
     var credits by remember { mutableStateOf(course.credits) }
     var teacher by remember { mutableStateOf(course.teacher) }
@@ -475,7 +510,7 @@ fun CourseEditorDialog(
                 }
 
                 // ── Week type selector ──
-                Text("周次类型", fontSize = 13.sp, color = TextTertiary)
+                Text("周次类型", fontSize = 13.sp, color = colors.textTertiary)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(
                         selected = weekType == "all",
@@ -501,7 +536,7 @@ fun CourseEditorDialog(
 
                 // ── Week range (shown for all/odd/even, hidden for thisWeek) ──
                 if (showWeekRange) {
-                    Text("课程周数范围", fontSize = 13.sp, color = TextTertiary)
+                    Text("课程周数范围", fontSize = 13.sp, color = colors.textTertiary)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         var sExp by remember { mutableStateOf(false) }
                         ExposedDropdownMenuBox(
@@ -551,7 +586,7 @@ fun CourseEditorDialog(
                     Text(
                         text = "共${endWeek - startWeek + 1}周：${startWeek}-${endWeek}周",
                         fontSize = 11.sp,
-                        color = TextSecondary,
+                        color = colors.textSecondary,
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 } else {
@@ -559,7 +594,7 @@ fun CourseEditorDialog(
                     Text(
                         text = "仅第 ${currentWeek} 周显示",
                         fontSize = 12.sp,
-                        color = accentColor(),
+                        color = colors.accentMain,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -590,7 +625,7 @@ fun CourseEditorDialog(
                         weekType = finalWeekType, weeks = generatedWeeks, colorIndex = colorIndex
                     ))
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain)
             ) { Text("保存") }
         },
         dismissButton = {
@@ -631,6 +666,7 @@ fun DeleteRangeDialog(
     onDismiss: () -> Unit,
     onConfirm: (DeleteRange) -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     val options = listOf(
         DeleteRange.ALL_BY_NAME to "删除全部该课程",
         DeleteRange.SAME_TIME_SLOT to "删除该时间段所有课",
@@ -662,13 +698,13 @@ fun DeleteRangeDialog(
                         RadioButton(
                             selected = selected == range,
                             onClick = { selected = range },
-                            colors = RadioButtonDefaults.colors(selectedColor = accentColor())
+                            colors = RadioButtonDefaults.colors(selectedColor = colors.accentMain)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             label,
                             fontSize = 14.sp,
-                            color = if (selected == range) TextPrimary else TextSecondary,
+                            color = if (selected == range) colors.textPrimary else colors.textSecondary,
                             fontWeight = if (selected == range) FontWeight.Medium else FontWeight.Normal
                         )
                     }
@@ -686,7 +722,7 @@ fun DeleteRangeDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = TextSecondary)
+                Text("取消", color = colors.textSecondary)
             }
         }
     )

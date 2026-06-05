@@ -31,7 +31,7 @@ fun WeekHeader(
     val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
     val today = LocalDate.now()
     val todayDay = today.dayOfWeek.value
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     // 计算本周周一日期
     val weekMonday = if (semesterStart.isNotBlank()) {
@@ -49,7 +49,7 @@ fun WeekHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (isDark) DarkSurfaceCard else SurfaceCard)
+            .background(colors.surfaceCard)
             .padding(horizontal = 4.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
@@ -66,13 +66,13 @@ fun WeekHeader(
             Icon(
                 Icons.Outlined.Assignment,
                 contentDescription = "作业",
-                tint = accentColor(),
+                tint = colors.accentMain,
                 modifier = Modifier.size(20.dp)
             )
             Text(
                 text = "作业",
                 fontSize = 8.sp,
-                color = accentColor(),
+                color = colors.accentMain,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -83,12 +83,12 @@ fun WeekHeader(
             val date = weekMonday.plusDays(index.toLong())
 
             val (bgColor, textColor, dayTextColor) = when {
-                isToday && isCurrentWeek -> Triple(accentColor(), Color.White, Color.White)
-                isToday && !isCurrentWeek -> Triple(accentSoftColor(), accentColor(), accentColor())
+                isToday && isCurrentWeek -> Triple(colors.accentMain, Color.White, Color.White)
+                isToday && !isCurrentWeek -> Triple(colors.surfaceHighlight, colors.accentMain, colors.accentMain)
                 else -> Triple(
                     Color.Transparent,
-                    if (isDark) DarkTextPrimary else TextPrimary,
-                    if (isDark) DarkTextTertiary else TextTertiary
+                    colors.textPrimary,
+                    colors.textTertiary
                 )
             }
 

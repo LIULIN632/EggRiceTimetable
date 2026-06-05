@@ -207,3 +207,26 @@ enum class DeleteRange {
     SAME_TIME_SLOT,
     ALL_BY_NAME
 }
+
+// ── MVI — TimetableUiState + TimetableIntent ──
+data class TimetableUiState(
+    val courses: List<CourseEntity> = emptyList(),
+    val timeSlots: List<TimeSlotEntity> = emptyList(),
+    val currentWeek: Int = 1,
+    val isCurrentWeek: Boolean = false,
+    val showEditor: Boolean = false,
+    val editingCourse: CourseEntity? = null,
+    val activeSchemeName: String = "默认课表"
+)
+
+sealed interface TimetableIntent {
+    data class EditCourse(val course: CourseEntity) : TimetableIntent
+    data class AddCourse(val day: Int, val slot: Int) : TimetableIntent
+    data class SaveCourse(val course: CourseEntity) : TimetableIntent
+    data class DeleteCourseRange(val course: CourseEntity, val range: DeleteRange) : TimetableIntent
+    data class MoveCourse(val course: CourseEntity, val newDay: Int, val newSlot: Int) : TimetableIntent
+    data object GoToToday : TimetableIntent
+    data object PrevWeek : TimetableIntent
+    data object NextWeek : TimetableIntent
+    data class SwitchScheme(val scheme: SchemeEntity) : TimetableIntent
+}

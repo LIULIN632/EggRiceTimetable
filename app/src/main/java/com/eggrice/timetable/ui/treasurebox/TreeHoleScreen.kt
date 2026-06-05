@@ -37,7 +37,7 @@ fun TreeHoleScreen(
     schemeId: Long,
     onBack: () -> Unit
 ) {
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -54,14 +54,14 @@ fun TreeHoleScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isDark) DarkSurfaceCard else SurfaceCard
+                    containerColor = colors.surfaceCard
                 )
             )
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
-                containerColor = accentColor(),
+                containerColor = colors.accentMain,
                 contentColor = Color.White
             ) {
                 Icon(Icons.Filled.Edit, "写下心声")
@@ -72,7 +72,7 @@ fun TreeHoleScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(if (isDark) DarkSurfaceAlt else SurfaceAlt)
+                .background(colors.surfaceAlt)
         ) {
             if (messages.isEmpty()) {
                 EmptyStatePlaceholder(
@@ -89,7 +89,6 @@ fun TreeHoleScreen(
                     items(messages, key = { it.id }) { msg ->
                         TreeHoleCard(
                             message = msg,
-                            isDark = isDark,
                             onDelete = {
                                 scope.launch { repository.deleteTreeHole(msg.id) }
                             }
@@ -102,11 +101,10 @@ fun TreeHoleScreen(
 
     if (showAddDialog) {
         AddTreeHoleDialog(
-            isDark = isDark,
             onDismiss = { showAddDialog = false },
-            onConfirm = { content ->
+            onConfirm = { content, author ->
                 scope.launch {
-                    repository.insertTreeHole(TreeHoleEntity(content = content.trim(), schemeId = schemeId))
+                    repository.insertTreeHole(TreeHoleEntity(content = content.trim(), author = author.trim(), schemeId = schemeId))
                 }
                 showAddDialog = false
             }
@@ -117,9 +115,9 @@ fun TreeHoleScreen(
 @Composable
 private fun TreeHoleCard(
     message: TreeHoleEntity,
-    isDark: Boolean,
     onDelete: () -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
 
@@ -127,7 +125,7 @@ private fun TreeHoleCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDark) DarkSurfaceCard else SurfaceCard
+            containerColor = colors.surfaceCard
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -145,21 +143,21 @@ private fun TreeHoleCard(
                     Icon(
                         Icons.Outlined.PersonOutline,
                         null,
-                        tint = accentColor().copy(alpha = 0.5f),
+                        tint = colors.accentMain.copy(alpha = 0.5f),
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "匿名同学",
+                        message.author.ifBlank { "匿名同学" },
                         fontSize = 11.sp,
-                        color = (if (isDark) DarkTextTertiary else TextTertiary).copy(alpha = 0.6f)
+                        color = colors.textTertiary.copy(alpha = 0.6f)
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         dateFormat.format(Date(message.createdAt)),
                         fontSize = 11.sp,
-                        color = (if (isDark) DarkTextTertiary else TextTertiary).copy(alpha = 0.4f)
+                        color = colors.textTertiary.copy(alpha = 0.4f)
                     )
                     IconButton(
                         onClick = { showDeleteConfirm = true },
@@ -168,7 +166,7 @@ private fun TreeHoleCard(
                         Icon(
                             Icons.Outlined.Delete,
                             "删除",
-                            tint = (if (isDark) DarkTextTertiary else TextTertiary).copy(alpha = 0.3f),
+                            tint = colors.textTertiary.copy(alpha = 0.3f),
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -180,7 +178,7 @@ private fun TreeHoleCard(
             Text(
                 message.content,
                 fontSize = 15.sp,
-                color = if (isDark) DarkTextPrimary else TextPrimary,
+                color = colors.textPrimary,
                 lineHeight = 22.sp
             )
         }
@@ -194,7 +192,7 @@ private fun TreeHoleCard(
             confirmButton = {
                 Button(
                     onClick = { onDelete(); showDeleteConfirm = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE57373))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC89098))
                 ) { Text("删除") }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } }
@@ -205,23 +203,30 @@ private fun TreeHoleCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddTreeHoleDialog(
-    isDark: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (String, String) -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     var content by remember { mutableStateOf("") }
+    var author by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("写给树洞", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text(
-                    "你的留言将以匿名方式放入树洞",
-                    fontSize = 12.sp,
-                    color = if (isDark) DarkTextTertiary else TextTertiary,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                OutlinedTextField(
+                    value = author,
+                    onValueChange = { if (it.length <= 8) author = it },
+                    placeholder = { Text("你的昵称（留空则为匿名）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.accentMain,
+                        cursorColor = colors.accentMain
+                    )
                 )
+                Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = content,
                     onValueChange = { if (it.length <= 500) content = it },
@@ -231,14 +236,14 @@ private fun AddTreeHoleDialog(
                         .height(120.dp),
                     maxLines = 6,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = accentColor(),
-                        cursorColor = accentColor()
+                        focusedBorderColor = colors.accentMain,
+                        cursorColor = colors.accentMain
                     )
                 )
                 Text(
                     "${content.length}/500",
                     fontSize = 11.sp,
-                    color = (if (isDark) DarkTextTertiary else TextTertiary).copy(alpha = 0.5f),
+                    color = colors.textTertiary.copy(alpha = 0.5f),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 4.dp),
@@ -248,9 +253,9 @@ private fun AddTreeHoleDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(content) },
+                onClick = { onConfirm(content, author) },
                 enabled = content.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain)
             ) { Text("放入树洞") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }

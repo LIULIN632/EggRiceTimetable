@@ -40,3 +40,7 @@ school_*.txt
 deep-research-report.md
 问题反馈/
 .reasonix/
+
+# Keystore (passwords)
+keystore.properties
+*.jks

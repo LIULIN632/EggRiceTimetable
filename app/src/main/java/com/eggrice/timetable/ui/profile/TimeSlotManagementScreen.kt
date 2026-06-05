@@ -121,6 +121,7 @@ fun TimeSlotManagementScreen(
     }
 
     var showAddDialog by remember { mutableStateOf(false) }
+    val colors = LocalEggRiceColors.current
 
     // Quick-generate state
     var morningHour by remember { mutableIntStateOf(8) }
@@ -167,7 +168,7 @@ fun TimeSlotManagementScreen(
                 },
                 actions = {
                     IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Filled.Add, "添加节次", tint = accentColor())
+                        Icon(Icons.Filled.Add, "添加节次", tint = colors.accentMain)
                     }
                     IconButton(onClick = {
                         val classDur = localClassDur.toIntOrNull() ?: 45
@@ -185,10 +186,10 @@ fun TimeSlotManagementScreen(
                             }
                         )
                     }) {
-                        Icon(Icons.Filled.Save, "保存", tint = accentColor())
+                        Icon(Icons.Filled.Save, "保存", tint = colors.accentMain)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceCard)
             )
         }
     ) { padding ->
@@ -196,7 +197,7 @@ fun TimeSlotManagementScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(SurfaceAlt),
+                .background(colors.surfaceAlt),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             // ── Quick Generate Card ──
@@ -206,14 +207,14 @@ fun TimeSlotManagementScreen(
                         .fillMaxWidth()
                         .padding(16.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+                    colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             "快捷生成时间段",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary
+                            color = colors.textPrimary
                         )
                         Spacer(Modifier.height(12.dp))
 
@@ -268,8 +269,8 @@ fun TimeSlotManagementScreen(
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = accentColor(),
-                                    unfocusedBorderColor = CardBorder
+                                    focusedBorderColor = colors.accentMain,
+                                    unfocusedBorderColor = colors.borderDivider
                                 )
                             )
                             OutlinedTextField(
@@ -282,8 +283,8 @@ fun TimeSlotManagementScreen(
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = accentColor(),
-                                    unfocusedBorderColor = CardBorder
+                                    focusedBorderColor = colors.accentMain,
+                                    unfocusedBorderColor = colors.borderDivider
                                 )
                             )
                         }
@@ -295,7 +296,7 @@ fun TimeSlotManagementScreen(
                             onClick = { generateSlots() },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain)
                         ) {
                             Text("生成时间段", fontWeight = FontWeight.Medium)
                         }
@@ -309,7 +310,7 @@ fun TimeSlotManagementScreen(
                     "节次时间段列表",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary,
+                    color = colors.textPrimary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
@@ -324,7 +325,7 @@ fun TimeSlotManagementScreen(
                 }
             } else {
                 itemsIndexed(localSlots, key = { _, s -> "slot-${s.slot}" }) { index, slot ->
-                    val bgColor = if (index % 2 == 0) SurfaceCard else SurfaceAlt
+                    val bgColor = if (index % 2 == 0) colors.surfaceCard else colors.surfaceAlt
                     Surface(color = bgColor, modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
@@ -337,7 +338,7 @@ fun TimeSlotManagementScreen(
                                 "第${slot.slot}节",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = TextPrimary,
+                                color = colors.textPrimary,
                                 modifier = Modifier.width(56.dp)
                             )
 
@@ -345,7 +346,7 @@ fun TimeSlotManagementScreen(
                             Text(
                                 "${slot.startTime} - ${slot.endTime}",
                                 fontSize = 14.sp,
-                                color = accentColor(),
+                                color = colors.accentMain,
                                 modifier = Modifier.weight(1f),
                                 textAlign = TextAlign.Center
                             )
@@ -387,16 +388,16 @@ fun TimeSlotManagementScreen(
                             .padding(16.dp)
                             .clickable { showAddDialog = true },
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = accentSoftColor().copy(alpha = 0.5f))
+                        colors = CardDefaults.cardColors(containerColor = colors.surfaceHighlight.copy(alpha = 0.5f))
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Filled.Add, null, tint = accentColor(), modifier = Modifier.size(18.dp))
+                            Icon(Icons.Filled.Add, null, tint = colors.accentMain, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("添加新节次", fontSize = 14.sp, color = accentColor(), fontWeight = FontWeight.Medium)
+                            Text("添加新节次", fontSize = 14.sp, color = colors.accentMain, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
@@ -458,6 +459,7 @@ private fun AddTimeSlotDialog(
     var endMin by remember { mutableStateOf(try { LocalTime.parse(defaultEnd, formatter).minute } catch (_: Exception) { 45 }) }
 
     val context = LocalContext.current
+    val colors = LocalEggRiceColors.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -471,7 +473,7 @@ private fun AddTimeSlotDialog(
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("开始时间", fontSize = 14.sp, color = TextSecondary)
+                Text("开始时间", fontSize = 14.sp, color = colors.textSecondary)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -483,7 +485,7 @@ private fun AddTimeSlotDialog(
                         label = "时",
                         modifier = Modifier.weight(1f)
                     )
-                    Text(":", fontSize = 20.sp, color = TextPrimary)
+                    Text(":", fontSize = 20.sp, color = colors.textPrimary)
                     NumberPickerField(
                         value = startMin,
                         onValueChange = { startMin = it },
@@ -493,7 +495,7 @@ private fun AddTimeSlotDialog(
                     )
                 }
 
-                Text("结束时间", fontSize = 14.sp, color = TextSecondary)
+                Text("结束时间", fontSize = 14.sp, color = colors.textSecondary)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -505,7 +507,7 @@ private fun AddTimeSlotDialog(
                         label = "时",
                         modifier = Modifier.weight(1f)
                     )
-                    Text(":", fontSize = 20.sp, color = TextPrimary)
+                    Text(":", fontSize = 20.sp, color = colors.textPrimary)
                     NumberPickerField(
                         value = endMin,
                         onValueChange = { endMin = it },
@@ -529,7 +531,7 @@ private fun AddTimeSlotDialog(
                         onConfirm(start, end)
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain)
             ) {
                 Text("添加")
             }
@@ -550,6 +552,7 @@ private fun PeriodQuickRow(
     count: Int,
     onCountChange: (Int) -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -558,15 +561,15 @@ private fun PeriodQuickRow(
             label,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
-            color = TextPrimary,
+            color = colors.textPrimary,
             modifier = Modifier.width(32.dp)
         )
-        Text("开始", fontSize = 11.sp, color = TextTertiary)
+        Text("开始", fontSize = 11.sp, color = colors.textTertiary)
         TimeField(hour, onHourChange, "时")
-        Text(":", fontSize = 16.sp, color = TextPrimary)
+        Text(":", fontSize = 16.sp, color = colors.textPrimary)
         TimeField(minute, onMinuteChange, "分")
         Spacer(Modifier.width(8.dp))
-        Text("节数", fontSize = 11.sp, color = TextTertiary)
+        Text("节数", fontSize = 11.sp, color = colors.textTertiary)
         OutlinedTextField(
             value = count.toString(),
             onValueChange = { v ->
@@ -578,8 +581,8 @@ private fun PeriodQuickRow(
             modifier = Modifier.width(56.dp),
             shape = RoundedCornerShape(8.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = accentColor(),
-                unfocusedBorderColor = CardBorder
+                focusedBorderColor = colors.accentMain,
+                unfocusedBorderColor = colors.borderDivider
             ),
             textStyle = androidx.compose.ui.text.TextStyle(
                 textAlign = TextAlign.Center,
@@ -591,6 +594,7 @@ private fun PeriodQuickRow(
 
 @Composable
 private fun TimeField(value: Int, onValueChange: (Int) -> Unit, label: String) {
+    val colors = LocalEggRiceColors.current
     OutlinedTextField(
         value = String.format("%02d", value),
         onValueChange = { v ->
@@ -603,8 +607,8 @@ private fun TimeField(value: Int, onValueChange: (Int) -> Unit, label: String) {
         modifier = Modifier.width(56.dp),
         shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = accentColor(),
-            unfocusedBorderColor = CardBorder
+            focusedBorderColor = colors.accentMain,
+            unfocusedBorderColor = colors.borderDivider
         ),
         textStyle = androidx.compose.ui.text.TextStyle(
             textAlign = TextAlign.Center,
@@ -621,6 +625,7 @@ private fun NumberPickerField(
     label: String,
     modifier: Modifier = Modifier
 ) {
+    val colors = LocalEggRiceColors.current
     OutlinedTextField(
         value = String.format("%02d", value),
         onValueChange = { text ->
@@ -633,8 +638,8 @@ private fun NumberPickerField(
         modifier = modifier,
         shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = accentColor(),
-            unfocusedBorderColor = CardBorder
+            focusedBorderColor = colors.accentMain,
+            unfocusedBorderColor = colors.borderDivider
         ),
         textStyle = androidx.compose.ui.text.TextStyle(
             textAlign = TextAlign.Center,

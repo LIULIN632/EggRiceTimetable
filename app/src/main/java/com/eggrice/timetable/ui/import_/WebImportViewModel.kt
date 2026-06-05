@@ -1,5 +1,7 @@
 package com.eggrice.timetable.ui.import_
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -14,6 +16,23 @@ import com.eggrice.timetable.data.School
 import com.eggrice.timetable.data.SchoolRegistry
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.repository.CourseRepository
+import com.eggrice.timetable.network.CookieStore
+import com.eggrice.timetable.network.CourseFields
+import com.eggrice.timetable.network.parseSlotRange
+import com.eggrice.timetable.network.parseDayHeader
+import com.eggrice.timetable.network.isValidCourseName
+import com.eggrice.timetable.network.extractCourseFields
+import com.eggrice.timetable.network.splitCourseBlocks
+import com.eggrice.timetable.network.parseWeeks
+import com.eggrice.timetable.network.parseWeeksToString
+import com.eggrice.timetable.network.computeWeekType
+import com.eggrice.timetable.network.parseBrDelimitedElements
+import com.eggrice.timetable.network.parseBrOrNewlineElements
+import com.eggrice.timetable.network.detectVerticalLayout
+import com.eggrice.timetable.network.buildDayMap
+import com.eggrice.timetable.network.filterBodyRows
+import com.eggrice.timetable.network.parseHorizontalTable
+import com.eggrice.timetable.network.parseVerticalTable
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
@@ -25,21 +44,24 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "WebImport"
 
 /** JSON model matching shiguangschedule's ImportCourseJsonModel from JS adapters. */
 data class ImportCourseJson(
-    val name: String = "",
-    val teacher: String = "",
-    val position: String = "",
-    val day: Int = 1,
+    val name: String? = "",
+    val teacher: String? = "",
+    val position: String? = "",
+    val day: Int? = 1,
     val startSection: Int? = null,
     val endSection: Int? = null,
-    val weeks: List<Int> = emptyList(),
+    val weeks: List<Int>? = emptyList(),
     val isCustomTime: Boolean = false,
     val customStartTime: String? = null,
     val customEndTime: String? = null,
@@ -132,6 +154,13 @@ class WebImportViewModel(
     private val gson = Gson()
     private val handler = Handler(Looper.getMainLooper())
 
+    private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
@@ -141,6 +170,16 @@ class WebImportViewModel(
     /** Custom URL override — when non-empty, this URL is used instead of school.baseUrl. */
     private val _customUrl = MutableStateFlow("")
     val customUrl: StateFlow<String> = _customUrl
+
+    /** Free URL mode — WebView active without a selected school. */
+    private val _freeUrlActive = MutableStateFlow(false)
+    val freeUrlActive: StateFlow<Boolean> = _freeUrlActive
+
+    /** URL history for free URL mode (max 10 entries). */
+    private val _urlHistory = MutableStateFlow<List<String>>(emptyList())
+    val urlHistory: StateFlow<List<String>> = _urlHistory
+
+    private var urlHistoryPrefs: SharedPreferences? = null
 
     val filteredSchools: StateFlow<List<School>> = combine(_searchQuery, _selectedSchool) { query, _ ->
         if (query.isBlank()) schoolRegistry.allSchools
@@ -172,10 +211,61 @@ class WebImportViewModel(
     var webView: WebView? = null
 
     fun updateSearch(query: String) { _searchQuery.value = query }
-    fun selectSchool(school: School) { _selectedSchool.value = school; _importedCount.value = 0 }
-    fun clearSchool() { _selectedSchool.value = null; _importedCount.value = 0; _detectedCount.value = 0 }
+    fun selectSchool(school: School) { _selectedSchool.value = school; _freeUrlActive.value = false; _importedCount.value = 0 }
+    fun clearSchool() { _selectedSchool.value = null; _freeUrlActive.value = false; _importedCount.value = 0; _detectedCount.value = 0 }
     fun setCustomUrl(url: String) { _customUrl.value = url }
     fun toastShown() { _toastMessage.value = null }
+
+    /** Initialize URL history from SharedPreferences (call once with app context). */
+    fun initUrlHistory(context: Context) {
+        urlHistoryPrefs = context.getSharedPreferences("web_import_urls", Context.MODE_PRIVATE)
+        val json = urlHistoryPrefs?.getString("history", null)
+        if (!json.isNullOrEmpty()) {
+            try {
+                val type = object : TypeToken<List<String>>() {}.type
+                _urlHistory.value = Gson().fromJson(json, type)
+            } catch (_: Exception) {
+                _urlHistory.value = emptyList()
+            }
+        }
+    }
+
+    /** Enter free URL mode — no school selected, load arbitrary教务 URL directly. */
+    fun enterFreeUrlMode(url: String) {
+        val trimmed = url.trim()
+        if (trimmed.isBlank()) return
+        _selectedSchool.value = null
+        _freeUrlActive.value = true
+        _customUrl.value = trimmed
+        _importedCount.value = 0
+        saveUrlToHistory(trimmed)
+    }
+
+    /** Exit free URL mode and return to school list. */
+    fun exitFreeUrlMode() {
+        _freeUrlActive.value = false
+        _customUrl.value = ""
+        _selectedSchool.value = null
+        _importedCount.value = 0
+        _detectedCount.value = 0
+    }
+
+    private fun saveUrlToHistory(url: String) {
+        val history = _urlHistory.value.toMutableList()
+        history.removeAll { it.equals(url, ignoreCase = true) }
+        history.add(0, url)
+        if (history.size > 10) history.subList(10, history.size).clear()
+        _urlHistory.value = history
+        urlHistoryPrefs?.edit()?.putString("history", Gson().toJson(history))?.apply()
+    }
+
+    /** Remove a URL from history. */
+    fun removeUrlFromHistory(url: String) {
+        val history = _urlHistory.value.toMutableList()
+        history.removeAll { it.equals(url, ignoreCase = true) }
+        _urlHistory.value = history
+        urlHistoryPrefs?.edit()?.putString("history", Gson().toJson(history))?.apply()
+    }
 
     /** The effective URL to load: customUrl > school.baseUrl. */
     fun getEffectiveUrl(): String? {
@@ -209,13 +299,19 @@ class WebImportViewModel(
             addLog("正在执行 JS 适配器脚本导入...")
 
             try {
-                val jwType = _selectedSchool.value?.jwType ?: JwSystemType.ZHENGFANG
-                val scriptName = when (jwType) {
-                    JwSystemType.ZHENGFANG -> "zhengfang_01.js"
-                    JwSystemType.QIANGZHI -> "zhengfang_01.js" // shares patterns
-                    JwSystemType.QINGGUO -> "qingguo_jiaowu_qingguo_01.js"
-                    JwSystemType.CHAOXING -> "chaoxing_jiaowu_chaoxing.js"
-                    JwSystemType.URP -> "urp_jiaowu_urp_01.js"
+                val jwType = _selectedSchool.value?.jwType
+                val scriptName = if (jwType != null) {
+                    when (jwType) {
+                        JwSystemType.ZHENGFANG -> "zhengfang_01.js"
+                        JwSystemType.QIANGZHI -> "zhengfang_01.js"
+                        JwSystemType.QINGGUO -> "qingguo_jiaowu_qingguo_01.js"
+                        JwSystemType.CHAOXING -> "chaoxing_jiaowu_chaoxing.js"
+                        JwSystemType.URP -> "urp_jiaowu_urp_01.js"
+                    }
+                } else {
+                    // Free URL mode — try all adapters, starting with zhengfang (most common)
+                    addLog("通用导入模式: 未指定教务类型，使用正方适配器尝试")
+                    "zhengfang_01.js"
                 }
                 val scriptPath = "adapters/scripts/$scriptName"
                 addLog("加载适配器脚本: $scriptPath")
@@ -250,6 +346,84 @@ class WebImportViewModel(
             } catch (e: Exception) {
                 addLog("JS适配器执行失败: ${e.message}")
                 _toastMessage.value = "导入失败：${e.message}"
+                _isImporting.value = false
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    //  Route 1b: OkHttp 直接抓取课表页面 (使用 WebView 提取的 Cookie)
+    //  对应优化方案中的"WebView 登录 → Cookie → OkHttp 抓取"混合方案
+    // ═══════════════════════════════════════════
+
+    /** 使用 WebView 中提取的 Cookie，通过 OkHttp 直接抓取当前页面 HTML 并解析。
+     *  比 WebView 内 JS 抓取更快更可靠，适合 JS 适配器失败时的回退方案。 */
+    fun fetchCourseViaOkHttp(currentPageUrl: String) {
+        viewModelScope.launch {
+            if (_isImporting.value) return@launch
+            _isImporting.value = true
+            _parseLogs.value = emptyList()
+            addLog("OkHttp: 尝试直接抓取课表页面...")
+
+            try {
+                val cookies = CookieStore.get()
+                if (cookies.isNullOrEmpty()) {
+                    addLog("OkHttp: 未找到已保存的 Cookie，请先在 WebView 中登录")
+                    _toastMessage.value = "请先在教务页面中登录"
+                    _isImporting.value = false
+                    return@launch
+                }
+                addLog("OkHttp: 使用已保存的 Cookie (${cookies.length} 字符)")
+
+                val url = currentPageUrl.ifBlank {
+                    _selectedSchool.value?.baseUrl?.trimEnd('/') ?: ""
+                }
+                if (url.isBlank()) {
+                    addLog("OkHttp: 无有效 URL")
+                    _isImporting.value = false
+                    return@launch
+                }
+                addLog("OkHttp: 请求 $url")
+
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("Cookie", cookies)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .build()
+
+                val html = withContext(Dispatchers.IO) {
+                    okHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            throw Exception("HTTP ${response.code}: ${response.message}")
+                        }
+                        response.body?.string() ?: throw Exception("响应体为空")
+                    }
+                }
+                addLog("OkHttp: 成功获取页面 (${html.length} 字符)")
+
+                val jwType = _selectedSchool.value?.jwType
+                addLog("OkHttp: 教务系统类型: ${jwType?.label ?: "未知"}")
+                val courses = withContext(Dispatchers.IO) { parseHtmlToCourses(html, jwType) }
+                addLog("OkHttp: 解析完成，共识别 ${courses.size} 门课程")
+
+                if (courses.isNotEmpty()) {
+                    courses.forEachIndexed { i, c ->
+                        addLog("  ${i + 1}. ${c.name} | ${c.teacher} | ${c.room} | 周${c.dayOfWeek} 第${c.startSlot}-${c.endSlot}节 | 周次=${c.weeks}")
+                    }
+                    val schemeId = schemeIdProvider()
+                    val coursesWithScheme = courses.map { it.copy(schemeId = schemeId) }
+                    val inserted = withContext(Dispatchers.IO) { insertCourses(coursesWithScheme) }
+                    _importedCount.value = inserted
+                    _detectedCount.value = 0
+                    addLog("OkHttp: 成功导入 $inserted 门课程")
+                } else {
+                    addLog("OkHttp: 未检测到课表数据")
+                    _toastMessage.value = "未检测到课表，请确认已进入课表页面"
+                }
+            } catch (e: Exception) {
+                addLog("OkHttp 抓取失败: ${e.message}")
+                _toastMessage.value = "抓取失败：${e.message}"
+            } finally {
                 _isImporting.value = false
             }
         }
@@ -350,7 +524,7 @@ class WebImportViewModel(
 
                 val courses = importedCourses.mapNotNull { convertImportCourse(it) }
                 if (courses.isEmpty()) {
-                    addLog("JS桥接: 转换后无有效课程")
+                    addLog("JS桥接: 转换后无有效课程 (原始=${importedCourses.size}门)")
                     _toastMessage.value = "未识别到有效课程数据"
                     _isImporting.value = false
                     return@launch
@@ -362,35 +536,38 @@ class WebImportViewModel(
                 _detectedCount.value = 0
                 addLog("JS桥接: 成功导入 $inserted 门课程")
             } catch (e: Exception) {
-                addLog("JS桥接: JSON解析失败: ${e.message}")
-                _toastMessage.value = "导入失败：${e.message}"
+                val detail = e.stackTraceToString()
+                addLog("JS桥接: 导入异常: $detail")
+                _toastMessage.value = "导入失败：${e.message ?: e.javaClass.simpleName}"
             } finally {
                 _isImporting.value = false
             }
         }
     }
 
-    /** Convert shiguangschedule-format ImportCourseJson to our CourseEntity. */
+    /** Convert shiguangschedule-format ImportCourseJson to our CourseEntity.
+     *  All field accesses are null-guarded because Gson can bypass Kotlin null-safety. */
     private fun convertImportCourse(json: ImportCourseJson): CourseEntity? {
-        val name = json.name.trim()
+        val name = json.name?.trim() ?: return null
         if (name.isEmpty() || name.length < 2) return null
-        if (json.day < 1 || json.day > 7) return null
+        val day = json.day.takeIf { it in 1..7 } ?: return null
 
         val startSlot = json.startSection ?: 1
         val endSlot = json.endSection ?: startSlot
-        val weeks = json.weeks.sorted().joinToString(",") { it.toString() }
-        val weekType = detectWeekType(weeks)
+        val weeksList = json.weeks ?: emptyList()
+        val weeks = weeksList.sorted().joinToString(",") { it.toString() }
+        val weekType = computeWeekType(parseWeeks(weeks))
 
         return CourseEntity(
             name = name,
-            teacher = json.teacher.trim(),
-            room = json.position.trim(),
-            dayOfWeek = json.day,
+            teacher = (json.teacher ?: "").trim(),
+            room = (json.position ?: "").trim(),
+            dayOfWeek = day,
             startSlot = startSlot,
             endSlot = endSlot,
             weeks = weeks,
             weekType = weekType,
-            colorIndex = (json.day * 3 + startSlot) % 15,
+            colorIndex = (day * 3 + startSlot) % 15,
             schemeId = schemeIdProvider()
         )
     }
@@ -462,7 +639,6 @@ class WebImportViewModel(
     // ── Zhengfang parser ──
 
     private fun parseZhengfang(doc: Document): List<CourseEntity> {
-        val courses = mutableListOf<CourseEntity>()
         val colors = listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 
         val table = doc.select("table#Table1").firstOrNull()
@@ -472,376 +648,32 @@ class WebImportViewModel(
             ?: doc.select("table.datelist").firstOrNull()
             ?: doc.select("table.table").firstOrNull()
             ?: doc.select("table").firstOrNull()
-            ?: return courses
+            ?: return emptyList()
 
         addLog("正方: 找到课表表格 (class=${table.className()})")
 
         val allRows = table.select("tr")
-        if (allRows.size < 2) return courses
+        if (allRows.size < 2) return emptyList()
 
-        // Find day-header row
-        var headerRowIdx = -1
-        val dayMap = mutableMapOf<Int, Int>()
-        for (ri in 0 until minOf(allRows.size, 4)) {
-            val cells = allRows[ri].select("td, th")
-            cells.forEachIndexed { col, cell ->
-                val text = cell.text().trim()
-                val day = when {
-                    text.matches(Regex("星期\\s*一|周一|^一$")) -> 1
-                    text.matches(Regex("星期\\s*二|周二|^二$")) -> 2
-                    text.matches(Regex("星期\\s*三|周三|^三$")) -> 3
-                    text.matches(Regex("星期\\s*四|周四|^四$")) -> 4
-                    text.matches(Regex("星期\\s*五|周五|^五$")) -> 5
-                    text.matches(Regex("星期\\s*六|周六|^六$")) -> 6
-                    text.matches(Regex("星期\\s*日|周日|星期\\s*天|周天|^日$")) -> 7
-                    else -> null
-                }
-                if (day != null && day !in dayMap.values) dayMap[col] = day
-            }
-            if (dayMap.size >= 5) { headerRowIdx = ri; break }
-        }
-
+        val (dayMap, headerRowIdx) = buildDayMap(allRows.take(4))
         addLog("正方: dayMap cols=$dayMap, headerRow=$headerRowIdx")
+        if (dayMap.size < 3) addLog("正方: 星期头不足，使用默认列映射 col1=周一..col7=周日")
 
-        if (dayMap.size < 3) {
-            addLog("正方: 星期头不足(${dayMap.size}<3)，使用默认列映射 col1=周一..col7=周日")
-            dayMap.clear()
-            for (i in 1..7) dayMap[i] = i
-        }
+        val colOffset = if (dayMap.containsKey(0)) 1 else 0
+        val (bodyRows, rowSlotRanges) = filterBodyRows(allRows, headerRowIdx)
+        if (bodyRows.isEmpty()) return emptyList()
 
-        val bodyStart = maxOf(headerRowIdx + 1, 1)
-        val bodyRows = allRows.drop(bodyStart).filter { row ->
-            val cells = row.select("td, th")
-            if (cells.isEmpty()) return@filter false
-            val allText = cells.map { it.text().trim() }.filter { it.isNotBlank() }
-            if (allText.isEmpty()) return@filter false
-            if (isMonthOrDateRow(cells)) return@filter false
-            true
-        }
-
-        if (bodyRows.isEmpty()) return courses
-
-        val isVertical = detectVertical(bodyRows)
+        val isVertical = detectVerticalLayout(bodyRows)
         addLog("正方: ${if (isVertical) "竖排" else "横排"}布局, bodyRows=${bodyRows.size}")
 
-        if (isVertical) parseZhengfangVertical(bodyRows, dayMap, colors, courses)
-        else parseZhengfangHorizontal(bodyRows, dayMap, colors, courses)
+        val courses = if (isVertical) parseVerticalTable(bodyRows, dayMap, colors)
+        else parseHorizontalTable(bodyRows, dayMap, colOffset, colors, rowSlotRanges)
 
         addLog("正方: 解析到 ${courses.size} 门课程")
         return courses
     }
 
-    private fun isMonthOrDateRow(cells: List<Element>): Boolean {
-        val texts = cells.map { it.text().trim() }.filter { it.isNotBlank() }
-        if (texts.isEmpty()) return true
-        val firstText = cells.firstOrNull()?.text()?.trim() ?: ""
-        if (parseSlotLabel(firstText) != null) return false
-        val monthDateCount = texts.count { isMonthOrDateCell(it) }
-        return monthDateCount > texts.size / 2 && texts.size >= 3
-    }
-
-    private fun isMonthOrDateCell(text: String): Boolean {
-        if (text.isBlank()) return true
-        if (Regex("""^\d{1,2}\s*月$""").matches(text)) return true
-        if (Regex("""^\d{1,2}/\d{1,2}$""").matches(text)) return true
-        if (Regex("""^第\s*\d+\s*周$""").matches(text)) return true
-        if (Regex("""^\d{4}$""").matches(text)) return true
-        if (text in listOf("上午", "下午", "晚上", "早晨", "中午")) return true
-        return false
-    }
-
-    private fun detectVertical(bodyRows: List<Element>): Boolean {
-        var slotCount = 0
-        for (i in 0 until minOf(6, bodyRows.size)) {
-            val first = bodyRows[i].select("td, th").firstOrNull()?.text()?.trim() ?: continue
-            if (parseSlotLabel(first) != null) {
-                slotCount++
-            } else if (Regex("""^\s*\d+\s*$""").matches(first) && first.toIntOrNull() in 1..12) {
-                slotCount++
-            } else if (Regex("""节|课""").containsMatchIn(first)) {
-                slotCount++
-            }
-        }
-        return slotCount >= 2
-    }
-
-    private fun isValidCourseName(name: String): Boolean {
-        if (name.length < 2 || name.length > 25) return false
-        if (Regex("""^[\d\s./\-月日周星期]+$""").matches(name)) return false
-        if (name in listOf("无", "备注", "节次", "时间", "课程", "教师", "教室")) return false
-        if (!Regex("""[一-龥A-Za-z]""").containsMatchIn(name)) return false
-        return true
-    }
-
-    private fun parseZhengfangVertical(
-        bodyRows: List<Element>,
-        dayMap: Map<Int, Int>,
-        colors: List<Int>,
-        courses: MutableList<CourseEntity>
-    ) {
-        addLog("正方竖排: 开始按列解析 ${bodyRows.size} 行, dayMap=$dayMap")
-
-        // Build clean column→day mapping with position-based fallback
-        // Column 0 = slot labels, columns 1+ = Mon-Sun (unless overridden by dayMap)
-        val maxCols = bodyRows.maxOfOrNull { row -> row.select("td, th").size } ?: return
-        val colToDay = mutableMapOf<Int, Int>()
-        for (col in 1 until maxCols) {
-            colToDay[col] = dayMap[col] ?: col.coerceIn(1, 7)
-        }
-        addLog("正方竖排: maxCols=$maxCols, colToDay=$colToDay")
-
-        // Pre-scan: collect slot ranges for each row (for rowSpan lookahead)
-        val rowSlotRanges = mutableListOf<Pair<Int, Int>>()
-        for (row in bodyRows) {
-            val firstText = row.select("td, th").firstOrNull()?.text()?.trim() ?: ""
-            val slotRange = parseSlotLabel(firstText)
-            rowSlotRanges.add(slotRange ?: (-1 to -1))
-        }
-
-        // Process each day column independently
-        for ((dayCol, day) in colToDay) {
-            if (day !in 1..7) continue
-            var coursesInCol = 0
-            for (rowIdx in bodyRows.indices) {
-                val row = bodyRows[rowIdx]
-                val cells = row.select("td, th")
-                if (dayCol >= cells.size) continue
-
-                // Get slot from first column
-                val slotRange = rowSlotRanges.getOrNull(rowIdx)
-                if (slotRange == null || slotRange.first < 0) continue
-                val (startSlot, endSlot) = slotRange
-
-                val cell = cells[dayCol]
-                val text = cell.text().trim()
-                if (text.isBlank() || text.length < 2) continue
-
-                // Parse cell content
-                val brLines = cell.html().split(Regex("(?i)<br\\s*/?>")).map {
-                    Jsoup.parse(it).text().trim()
-                }.filter { it.isNotBlank() }
-
-                val contentLines = if (brLines.size >= 2) brLines
-                else text.split("\n", "\r\n").map { it.trim() }.filter { it.isNotBlank() }
-
-                if (contentLines.isEmpty()) continue
-
-                // Handle rowSpan
-                val rowSpan = cell.attr("rowspan").toIntOrNull() ?: 1
-                val cellEndSlot = if (rowSpan > 1) {
-                    val lookAheadIdx = rowIdx + rowSpan - 1
-                    if (lookAheadIdx < rowSlotRanges.size) {
-                        val lastRange = rowSlotRanges[lookAheadIdx]
-                        if (lastRange.first > 0) lastRange.second else endSlot + rowSpan - 1
-                    } else endSlot + rowSpan - 1
-                } else endSlot
-
-                val blocks = splitMultipleCourses(contentLines)
-                for (block in blocks) {
-                    if (block.isEmpty()) continue
-                    val (name, teacher, room, weeksRaw) = extractCourseFields(block)
-                    if (name.isEmpty() || name.length < 2) continue
-
-                    val weeks = parseWeekRange(weeksRaw)
-                    val weekType = detectWeekType(weeks, weeksRaw)
-
-                    courses.add(CourseEntity(
-                        name = name, teacher = teacher, room = room,
-                        dayOfWeek = day, startSlot = startSlot, endSlot = cellEndSlot,
-                        weeks = weeks, colorIndex = colors[courses.size % colors.size],
-                        weekType = weekType
-                    ))
-                    coursesInCol++
-                }
-            }
-            if (coursesInCol > 0) addLog("正方竖排: 星期$day 解析到 $coursesInCol 门课程")
-        }
-    }
-
-    /** Extract (name, teacher, room, weeks) from course text lines.
-     *  FIXED: widened teacher regex to 2-10 chars, supports mixed charset names. */
-    private fun extractCourseFields(lines: List<String>): CourseFields {
-        if (lines.isEmpty()) return CourseFields("", "", "", "")
-        val name = lines[0]
-
-        var teacher = ""
-        var room = ""
-        var weeksRaw = ""
-
-        for (i in 1 until lines.size) {
-            val line = lines[i].trim()
-            if (line.isEmpty()) continue
-
-            // Skip credit/score lines
-            if (Regex("""学分|绩点|考核""").containsMatchIn(line)) continue
-            if (Regex("""^\d+\.?\d*\s*(学分)?$""").matches(line)) continue
-
-            // Weeks
-            if (Regex("""周""").containsMatchIn(line)) {
-                if (weeksRaw.isEmpty()) weeksRaw = line
-                continue
-            }
-            // Room: has digits + building suffix
-            if (Regex("""\d""").containsMatchIn(line) && room.isEmpty()) {
-                room = line.removePrefix("@")
-                continue
-            }
-            // Teacher: widened to 2-10 chars, supports mixed charset (e.g. "欧阳修", "王John")
-            if (Regex("""^[一-鿿A-Za-z·]{2,10}$""").matches(line) && teacher.isEmpty()) {
-                teacher = line
-            }
-        }
-
-        return CourseFields(name, teacher, room, weeksRaw)
-    }
-
-    private data class CourseFields(val name: String, val teacher: String, val room: String, val weeks: String)
-
-    private fun splitMultipleCourses(lines: List<String>): List<List<String>> {
-        if (lines.isEmpty()) return emptyList()
-        if (lines.size <= 6) return listOf(lines)
-
-        val blocks = mutableListOf<List<String>>()
-        val current = mutableListOf<String>()
-
-        for (line in lines) {
-            val looksLikeName = line.length in 2..18 &&
-                !line.contains("周") &&
-                !Regex("""^\d|^@|^第|^星期|^[\d\s./\-]+$""").containsMatchIn(line) &&
-                Regex("""[一-龥A-Za-z]""").containsMatchIn(line)
-
-            if (looksLikeName && current.isNotEmpty() && current.size >= 2) {
-                blocks.add(current.toList())
-                current.clear()
-            }
-            current.add(line)
-        }
-        if (current.isNotEmpty()) blocks.add(current.toList())
-        return if (blocks.size > 1) blocks else listOf(lines)
-    }
-
-    /** Parse slot labels including bare digits (YIT vertical timetable uses "1", "2", etc.). */
-    private fun parseSlotLabel(text: String): Pair<Int, Int>? {
-        Regex("""第\s*(\d+)\s*[-–~至]\s*(\d+)\s*节""").find(text)?.let {
-            return Pair(it.groupValues[1].toInt(), it.groupValues[2].toInt())
-        }
-        Regex("""第\s*(\d+)\s*节""").find(text)?.let {
-            val s = it.groupValues[1].toInt()
-            return Pair(s, s)
-        }
-        Regex("""^(\d+)\s*[-–~]\s*(\d+)\s*节?$""").find(text)?.let {
-            return Pair(it.groupValues[1].toInt(), it.groupValues[2].toInt())
-        }
-        // Bare digit — key for YIT vertical timetable
-        val bareDigit = text.trim()
-        val num = bareDigit.toIntOrNull()
-        if (num != null && num in 1..12) {
-            return Pair(num, num)
-        }
-        val bigSlots = mapOf(
-            "一" to (1 to 2), "二" to (3 to 4), "三" to (5 to 6),
-            "四" to (7 to 8), "五" to (9 to 10), "六" to (11 to 12)
-        )
-        Regex("""第([一二三四五六])大节""").find(text)?.let {
-            return bigSlots[it.groupValues[1]]
-        }
-        return null
-    }
-
-    private fun parseZhengfangHorizontal(
-        bodyRows: List<Element>,
-        dayMap: Map<Int, Int>,
-        colors: List<Int>,
-        courses: MutableList<CourseEntity>
-    ) {
-        val colOffset = if (dayMap.containsKey(0)) 1 else 0
-        var slotIndex = 0
-        // Pre-scan rows to build slot-range index for rowSpan lookahead
-        val rowSlotRanges = mutableListOf<Pair<Int, Int>>()
-        var runningSlot = 0
-        for (row in bodyRows) {
-            val firstText = row.select("td, th").firstOrNull()?.text()?.trim() ?: ""
-            val parsed = parseSlotLabel(firstText)
-            if (parsed != null) {
-                runningSlot = parsed.first
-                rowSlotRanges.add(parsed)
-            } else {
-                val isHeader = firstText.isNotEmpty() &&
-                    (firstText.contains("上") || firstText.contains("下") || firstText.contains("晚") ||
-                     firstText.contains("早晨") || firstText.contains("中午"))
-                if (!isHeader) runningSlot++
-                rowSlotRanges.add(if (isHeader) -1 to -1 else runningSlot to runningSlot)
-            }
-        }
-
-        var dataRowIdx = 0
-        for (row in bodyRows) {
-            val cells = row.select("td, th")
-            if (cells.isEmpty()) { dataRowIdx++; continue }
-
-            val firstText = cells[0].text().trim()
-            val slotFromLabel = parseSlotLabel(firstText)
-            val isSectionHeader = firstText.isNotEmpty() &&
-                (firstText.contains("上") || firstText.contains("下") || firstText.contains("晚") ||
-                 firstText.contains("早晨") || firstText.contains("中午"))
-
-            if (slotFromLabel != null) {
-                slotIndex = slotFromLabel.first
-            } else if (!isSectionHeader) {
-                slotIndex++
-            }
-
-            cells.forEachIndexed { ci, cell ->
-                if (ci == 0) return@forEachIndexed
-                if (isSectionHeader) return@forEachIndexed
-                val day = dayMap[ci - colOffset]
-                    ?: (ci - colOffset).takeIf { it in 1..7 }
-                    ?: return@forEachIndexed
-                val text = cell.text().trim()
-                if (text.isBlank() || text.length < 1) return@forEachIndexed
-                if (text.matches(Regex("""^\d{1,2}\s*月$""")) || text.matches(Regex("""^\d{1,2}/\d{1,2}$"""))) return@forEachIndexed
-
-                val rowSpan = cell.attr("rowspan").toIntOrNull() ?: 1
-
-                // Use slot range from label for accurate endSlot; rowSpan extends further
-                val labelEnd = slotFromLabel?.second ?: slotIndex
-                val endSlot = if (rowSpan > 1) {
-                    val lookAheadIdx = dataRowIdx + rowSpan - 1
-                    if (lookAheadIdx < rowSlotRanges.size) {
-                        val lastRange = rowSlotRanges[lookAheadIdx]
-                        if (lastRange.first > 0) lastRange.second else labelEnd + rowSpan - 1
-                    } else labelEnd + rowSpan - 1
-                } else {
-                    maxOf(labelEnd, slotIndex)
-                }
-
-                val brLines = cell.html().split(Regex("(?i)<br\\s*/?>")).map {
-                    Jsoup.parse(it).text().trim()
-                }.filter { it.isNotBlank() }
-
-                if (brLines.isEmpty()) return@forEachIndexed
-
-                val (name, teacher, room, weeksRaw) = extractCourseFields(brLines)
-                if (name.isEmpty() || name.length < 2) return@forEachIndexed
-
-                val weeks = parseWeekRange(weeksRaw)
-                val weekType = detectWeekType(weeks, weeksRaw)
-
-                courses.add(CourseEntity(
-                    name = name, teacher = teacher, room = room,
-                    dayOfWeek = day, startSlot = slotIndex, endSlot = endSlot,
-                    weeks = weeks, colorIndex = colors[courses.size % colors.size],
-                    weekType = weekType
-                ))
-            }
-            dataRowIdx++
-        }
-    }
-
-    // ── Qiangzhi parser ──
-
     private fun parseQiangzhi(doc: Document): List<CourseEntity> {
-        val courses = mutableListOf<CourseEntity>()
         val colors = listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 
         val table = doc.select("table#kbtable").firstOrNull()
@@ -849,118 +681,21 @@ class WebImportViewModel(
             ?: doc.select("table#gridview").firstOrNull()
             ?: doc.select("table.grid").firstOrNull()
             ?: doc.select("table").firstOrNull()
-            ?: return courses
+            ?: return emptyList()
 
         addLog("强智: 找到课表表格")
 
-        val rows = table.select("tr")
-        if (rows.size < 2) return courses
+        val allRows = table.select("tr")
+        if (allRows.size < 2) return emptyList()
 
-        val headerCells = rows[0].select("td, th")
-        val dayMap = mutableMapOf<Int, Int>()
-        headerCells.forEachIndexed { col, cell ->
-            val text = cell.text().trim()
-            when {
-                text.contains("一") -> dayMap[col] = 1
-                text.contains("二") -> dayMap[col] = 2
-                text.contains("三") -> dayMap[col] = 3
-                text.contains("四") -> dayMap[col] = 4
-                text.contains("五") -> dayMap[col] = 5
-                text.contains("六") -> dayMap[col] = 6
-                text.contains("日") -> dayMap[col] = 7
-            }
-        }
-
-        if (dayMap.isEmpty()) {
-            for (i in 1..7) dayMap[i] = i
-            addLog("强智: 未找到星期头，使用默认列映射")
-        }
+        val dayMap = buildDayMap(listOf(allRows[0])).first.toMutableMap()
+        if (dayMap.isEmpty()) { for (i in 1..7) dayMap[i] = i; addLog("强智: 未找到星期头，使用默认列映射") }
 
         val colOffset = if (dayMap.containsKey(0)) 1 else 0
-        var slotIndex = 0
-        // Pre-scan rows for rowSpan lookahead
-        val rowSlotRanges = mutableListOf<Pair<Int, Int>>()
-        var runningSlot = 0
-        for (ri in 1 until rows.size) {
-            val cells = rows[ri].select("td, th")
-            val firstText = cells.firstOrNull()?.text()?.trim() ?: ""
-            val parsed = parseSlotLabel(firstText)
-            if (parsed != null) {
-                runningSlot = parsed.first
-                rowSlotRanges.add(parsed)
-            } else {
-                val isHeader = firstText.isNotEmpty() &&
-                    (firstText.contains("上") || firstText.contains("下") || firstText.contains("晚") ||
-                     firstText.contains("早晨") || firstText.contains("中午"))
-                if (!isHeader) runningSlot++
-                rowSlotRanges.add(if (isHeader) -1 to -1 else runningSlot to runningSlot)
-            }
-        }
+        val rowsMinusHeader = allRows.drop(1)
+        val (bodyRows, rowSlotRanges) = filterBodyRows(rowsMinusHeader, -1)
 
-        var dataRowIdx = 0
-        for (ri in 1 until rows.size) {
-            val cells = rows[ri].select("td, th")
-            if (cells.isEmpty()) { dataRowIdx++; continue }
-
-            val firstText = cells[0].text().trim()
-            val slotFromLabel = parseSlotLabel(firstText)
-            val isSectionHeader = firstText.isNotEmpty() &&
-                (firstText.contains("上") || firstText.contains("下") || firstText.contains("晚") ||
-                 firstText.contains("早晨") || firstText.contains("中午"))
-
-            if (slotFromLabel != null) {
-                slotIndex = slotFromLabel.first
-            } else if (!isSectionHeader) {
-                slotIndex++
-            }
-
-            cells.forEachIndexed { ci, cell ->
-                if (ci == 0) return@forEachIndexed
-                if (isSectionHeader) return@forEachIndexed
-                val day = dayMap[ci - colOffset]
-                    ?: (ci - colOffset).takeIf { it in 1..7 }
-                    ?: return@forEachIndexed
-                val text = cell.text().trim()
-                if (text.isBlank() || text.length < 2) return@forEachIndexed
-
-                val rowSpan = cell.attr("rowspan").toIntOrNull() ?: 1
-                val labelEnd = slotFromLabel?.second ?: slotIndex
-                val endSlot = if (rowSpan > 1) {
-                    val lookAheadIdx = dataRowIdx + rowSpan - 1
-                    if (lookAheadIdx < rowSlotRanges.size) {
-                        val lastRange = rowSlotRanges[lookAheadIdx]
-                        if (lastRange.first > 0) lastRange.second else labelEnd + rowSpan - 1
-                    } else labelEnd + rowSpan - 1
-                } else {
-                    maxOf(labelEnd, slotIndex)
-                }
-
-                val lines = cell.html().split(Regex("(?i)<br\\s*/?>")).map {
-                    Jsoup.parse(it).text().trim()
-                }.filter { it.isNotBlank() }
-
-                if (lines.isEmpty()) {
-                    val textLines = text.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-                    if (textLines.size < 2) return@forEachIndexed
-                    parseGenericCourse(textLines, text, colors, courses)
-                    return@forEachIndexed
-                }
-
-                val (name, teacher, room, weeksRaw) = extractCourseFields(lines)
-                if (name.isEmpty()) return@forEachIndexed
-
-                val weeks = parseWeekRange(weeksRaw)
-                val weekType = detectWeekType(weeks, weeksRaw)
-
-                courses.add(CourseEntity(
-                    name = name, teacher = teacher, room = room,
-                    dayOfWeek = day, startSlot = slotIndex, endSlot = endSlot,
-                    weeks = weeks, colorIndex = colors[courses.size % colors.size],
-                    weekType = weekType
-                ))
-            }
-            dataRowIdx++
-        }
+        val courses = parseHorizontalTable(bodyRows, dayMap, colOffset, colors, rowSlotRanges)
         addLog("强智: 解析到 ${courses.size} 门课程")
         return courses
     }
@@ -973,22 +708,13 @@ class WebImportViewModel(
 
         val tables = doc.select("table")
         for (table in tables) {
-            val rows = table.select("tr")
-            if (rows.size < 3) continue
-
-            val cells = table.select("td")
-            for (cell in cells) {
+            if (table.select("tr").size < 3) continue
+            for (cell in table.select("td")) {
                 val text = cell.text().trim()
                 if (text.length < 4) continue
                 if (Regex("""^[\d\s.,;:：.，、；：]+$""").matches(text)) continue
 
-                val lines = cell.html().split(Regex("(?i)<br\\s*/?>")).map {
-                    Jsoup.parse(it).text().trim()
-                }.filter { it.isNotBlank() }
-
-                val textLines = if (lines.size >= 2) lines
-                else text.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-
+                val textLines = parseBrOrNewlineElements(cell)
                 if (textLines.size < 2) continue
                 parseGenericCourse(textLines, text, colors, courses)
             }
@@ -1001,7 +727,6 @@ class WebImportViewModel(
     // ── URP parser ──
 
     private fun parseURP(doc: Document): List<CourseEntity> {
-        val courses = mutableListOf<CourseEntity>()
         val colors = listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 
         val table = doc.select("table#Table1").firstOrNull()
@@ -1009,118 +734,21 @@ class WebImportViewModel(
             ?: doc.select("table#ctl00_ContentPlaceHolder1_gridView").firstOrNull()
             ?: doc.select("table.datelist").firstOrNull()
             ?: doc.select("table").firstOrNull()
-            ?: return courses
+            ?: return emptyList()
 
         addLog("URP: 找到课表表格")
 
-        val rows = table.select("tr")
-        if (rows.size < 2) return courses
+        val allRows = table.select("tr")
+        if (allRows.size < 2) return emptyList()
 
-        val headerCells = rows[0].select("td, th")
-        val dayMap = mutableMapOf<Int, Int>()
-        headerCells.forEachIndexed { col, cell ->
-            val text = cell.text().trim()
-            when {
-                text.contains("一") -> dayMap[col] = 1
-                text.contains("二") -> dayMap[col] = 2
-                text.contains("三") -> dayMap[col] = 3
-                text.contains("四") -> dayMap[col] = 4
-                text.contains("五") -> dayMap[col] = 5
-                text.contains("六") -> dayMap[col] = 6
-                text.contains("日") -> dayMap[col] = 7
-            }
-        }
-
-        if (dayMap.isEmpty()) {
-            for (i in 1..7) dayMap[i] = i
-        }
+        val dayMap = buildDayMap(listOf(allRows[0])).first.toMutableMap()
+        if (dayMap.isEmpty()) for (i in 1..7) dayMap[i] = i
 
         val colOffset = if (dayMap.containsKey(0)) 1 else 0
-        var slotIndex = 0
-        // Pre-scan rows for rowSpan lookahead
-        val rowSlotRanges = mutableListOf<Pair<Int, Int>>()
-        var runningSlot = 0
-        for (ri in 1 until rows.size) {
-            val cells = rows[ri].select("td, th")
-            val firstText = cells.firstOrNull()?.text()?.trim() ?: ""
-            val parsed = parseSlotLabel(firstText)
-            if (parsed != null) {
-                runningSlot = parsed.first
-                rowSlotRanges.add(parsed)
-            } else {
-                val isHeader = firstText.isNotEmpty() &&
-                    (firstText.contains("上") || firstText.contains("下") || firstText.contains("晚") ||
-                     firstText.contains("早晨") || firstText.contains("中午"))
-                if (!isHeader) runningSlot++
-                rowSlotRanges.add(if (isHeader) -1 to -1 else runningSlot to runningSlot)
-            }
-        }
+        val rowsMinusHeader = allRows.drop(1)
+        val (bodyRows, rowSlotRanges) = filterBodyRows(rowsMinusHeader, -1)
 
-        var dataRowIdx = 0
-        for (ri in 1 until rows.size) {
-            val cells = rows[ri].select("td, th")
-            if (cells.isEmpty()) { dataRowIdx++; continue }
-
-            val firstText = cells[0].text().trim()
-            val slotFromLabel = parseSlotLabel(firstText)
-            val isSectionHeader = firstText.isNotEmpty() &&
-                (firstText.contains("上") || firstText.contains("下") || firstText.contains("晚") ||
-                 firstText.contains("早晨") || firstText.contains("中午"))
-
-            if (slotFromLabel != null) {
-                slotIndex = slotFromLabel.first
-            } else if (!isSectionHeader) {
-                slotIndex++
-            }
-
-            cells.forEachIndexed { ci, cell ->
-                if (ci == 0) return@forEachIndexed
-                if (isSectionHeader) return@forEachIndexed
-                val day = dayMap[ci - colOffset]
-                    ?: (ci - colOffset).takeIf { it in 1..7 }
-                    ?: return@forEachIndexed
-                val text = cell.text().trim()
-                if (text.isBlank() || text.length < 2) return@forEachIndexed
-
-                val rowSpan = cell.attr("rowspan").toIntOrNull() ?: 1
-                val labelEnd = slotFromLabel?.second ?: slotIndex
-                val endSlot = if (rowSpan > 1) {
-                    val lookAheadIdx = dataRowIdx + rowSpan - 1
-                    if (lookAheadIdx < rowSlotRanges.size) {
-                        val lastRange = rowSlotRanges[lookAheadIdx]
-                        if (lastRange.first > 0) lastRange.second else labelEnd + rowSpan - 1
-                    } else labelEnd + rowSpan - 1
-                } else {
-                    maxOf(labelEnd, slotIndex)
-                }
-
-                val lines = cell.html().split(Regex("(?i)<br\\s*/?>")).map {
-                    Jsoup.parse(it).text().trim()
-                }.filter { it.isNotBlank() }
-
-                if (lines.isEmpty()) {
-                    val textLines = text.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-                    if (textLines.size >= 2) {
-                        parseGenericCourse(textLines, text, colors, courses)
-                    }
-                    return@forEachIndexed
-                }
-
-                val (name, teacher, room, weeksRaw) = extractCourseFields(lines)
-                if (name.isEmpty()) return@forEachIndexed
-
-                val weeks = parseWeekRange(weeksRaw)
-                val weekType = detectWeekType(weeks, weeksRaw)
-
-                courses.add(CourseEntity(
-                    name = name, teacher = teacher, room = room,
-                    dayOfWeek = day, startSlot = slotIndex, endSlot = endSlot,
-                    weeks = weeks, colorIndex = colors[courses.size % colors.size],
-                    weekType = weekType
-                ))
-            }
-            dataRowIdx++
-        }
+        val courses = parseHorizontalTable(bodyRows, dayMap, colOffset, colors, rowSlotRanges)
         addLog("URP: 解析到 ${courses.size} 门课程")
         return courses
     }
@@ -1135,22 +763,11 @@ class WebImportViewModel(
         for (card in courseCards) {
             val text = card.text().trim()
             if (text.length < 4) continue
-
-            val lines = card.html().split(Regex("(?i)<br\\s*/?>")).map {
-                Jsoup.parse(it).text().trim()
-            }.filter { it.isNotBlank() }
-
-            val textLines = if (lines.size >= 2) lines
-            else text.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-
-            if (textLines.size >= 2) {
-                parseGenericCourse(textLines, text, colors, courses)
-            }
+            val textLines = parseBrOrNewlineElements(card)
+            if (textLines.size >= 2) parseGenericCourse(textLines, text, colors, courses)
         }
 
-        if (courses.isEmpty()) {
-            parseGeneric(doc).let { courses.addAll(it) }
-        }
+        if (courses.isEmpty()) courses.addAll(parseGeneric(doc))
 
         addLog("超星: 解析到 ${courses.size} 门课程")
         return courses
@@ -1161,24 +778,14 @@ class WebImportViewModel(
     private fun parseGeneric(doc: Document): List<CourseEntity> {
         val courses = mutableListOf<CourseEntity>()
         val colors = listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
-        val allTds = doc.select("td")
 
-        for (td in allTds) {
+        for (td in doc.select("td")) {
             val text = td.text().trim()
             if (text.length < 4) continue
             if (Regex("""^[\d\s.,;:：.\-/]+$""").matches(text)) continue
 
-            val lines = td.html().split(Regex("(?i)<br\\s*/?>")).map {
-                Jsoup.parse(it).text().trim()
-            }.filter { it.isNotBlank() }
-
-            if (lines.size < 2) {
-                val textLines = text.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-                if (textLines.size < 2) continue
-                parseGenericCourse(textLines, text, colors, courses)
-            } else {
-                parseGenericCourse(lines, text, colors, courses)
-            }
+            val textLines = parseBrOrNewlineElements(td)
+            if (textLines.size >= 2) parseGenericCourse(textLines, text, colors, courses)
         }
         return courses
     }
@@ -1203,7 +810,7 @@ class WebImportViewModel(
             val we = wm.groupValues[2].toIntOrNull() ?: 16
             (ws..we).joinToString(",")
         } else {
-            parseWeekRange(weeksRaw)
+            parseWeeksToString(weeksRaw)
         }
 
         courses.add(CourseEntity(
@@ -1211,56 +818,6 @@ class WebImportViewModel(
             dayOfWeek = day, startSlot = startSlot, endSlot = endSlot,
             weeks = weeks, colorIndex = colors[courses.size % colors.size]
         ))
-    }
-
-    // ── Utilities ──
-
-    private fun parseWeekRange(raw: String): String {
-        if (raw.isBlank()) return ""
-        // Detect 单/双 flag from raw text
-        val isOddOnly = raw.contains("单周") || raw.contains("(单)") || raw.contains("（单）")
-        val isEvenOnly = raw.contains("双周") || raw.contains("(双)") || raw.contains("（双）")
-        // "1-16周" or "1-8,10-16周" or "第1-16周" — strip non-numeric first
-        val cleaned = raw.replace(Regex("""[第周\(（\)）单双]"""), "").trim()
-        val ranges = Regex("""(\d+)\s*[-–~]\s*(\d+)""").findAll(cleaned).toList()
-        if (ranges.isNotEmpty()) {
-            val weeks = mutableSetOf<Int>()
-            for (m in ranges) {
-                val s = m.groupValues[1].toIntOrNull() ?: continue
-                val e = m.groupValues[2].toIntOrNull() ?: continue
-                for (w in s..e) {
-                    if (isOddOnly && w % 2 != 1) continue
-                    if (isEvenOnly && w % 2 != 0) continue
-                    weeks.add(w)
-                }
-            }
-            return weeks.sorted().joinToString(",")
-        }
-        // Comma-separated: "1,3,5,7,9,11,13,15"
-        val singles = Regex("""\d+""").findAll(cleaned)
-            .map { it.value.toIntOrNull() ?: 0 }
-            .filter { it in 1..30 }
-            .filter {
-                if (isOddOnly) it % 2 == 1
-                else if (isEvenOnly) it % 2 == 0
-                else true
-            }
-            .toSet()
-        return if (singles.isNotEmpty()) singles.sorted().joinToString(",") else ""
-    }
-
-    private fun detectWeekType(weeks: String, raw: String = ""): String {
-        // Check raw text for explicit 单/双 indicators first
-        if (raw.contains("单周") || raw.contains("(单)") || raw.contains("（单）")) return "odd"
-        if (raw.contains("双周") || raw.contains("(双)") || raw.contains("（双）")) return "even"
-        if (weeks.isBlank()) return "all"
-        val nums = weeks.split(",").mapNotNull { it.toIntOrNull() }
-        if (nums.isEmpty()) return "all"
-        return when {
-            nums.all { it % 2 == 1 } -> "odd"
-            nums.all { it % 2 == 0 } -> "even"
-            else -> "all"
-        }
     }
 
     class Factory(

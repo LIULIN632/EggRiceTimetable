@@ -112,6 +112,43 @@ class TreasureBoxViewModel(application: Application) : AndroidViewModel(applicat
         saveFoodOptions(list)
     }
 
+    fun updateFoodOption(updated: FoodOption) {
+        val list = _foodOptions.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == updated.id }
+        if (idx >= 0) {
+            list[idx] = updated
+            _foodOptions.value = list
+            saveFoodOptions(list)
+        }
+    }
+
+    fun exportFoodOptionsJson(includeDefaults: Boolean = false): String {
+        val list = if (includeDefaults) _foodOptions.value else _foodOptions.value.filter { it.isCustom }
+        return gson.toJson(list)
+    }
+
+    fun importFoodOptionsJson(json: String): Int {
+        return try {
+            val type = object : TypeToken<List<FoodOption>>() {}.type
+            val imported: List<FoodOption> = gson.fromJson(json, type)
+            val existing = _foodOptions.value.toMutableList()
+            val existingNames = existing.map { it.name to it.category }.toMutableSet()
+            var added = 0
+            for (food in imported) {
+                if ((food.name to food.category) !in existingNames) {
+                    existing.add(food.copy(id = java.util.UUID.randomUUID().toString(), isCustom = true))
+                    existingNames += (food.name to food.category)
+                    added++
+                }
+            }
+            if (added > 0) {
+                _foodOptions.value = existing
+                saveFoodOptions(existing)
+            }
+            added
+        } catch (_: Exception) { 0 }
+    }
+
     fun pickRandomFood() {
         _isRolling.value = true
         val list = _foodOptions.value
@@ -158,4 +195,19 @@ class TreasureBoxViewModel(application: Application) : AndroidViewModel(applicat
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             TreasureBoxViewModel(app) as T
     }
+}
+
+// ── MVI — FoodPickerUiState + FoodPickerIntent ──
+data class FoodPickerUiState(
+    val foodOptions: List<FoodOption> = emptyList(),
+    val pickedFood: FoodOption? = null,
+    val isRolling: Boolean = false
+)
+
+sealed interface FoodPickerIntent {
+    data object PickRandom : FoodPickerIntent
+    data object ClearPick : FoodPickerIntent
+    data class AddFood(val food: FoodOption) : FoodPickerIntent
+    data class DeleteFood(val id: String) : FoodPickerIntent
+    data class ImportFoods(val json: String) : FoodPickerIntent
 }

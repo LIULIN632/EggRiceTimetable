@@ -19,9 +19,7 @@ fun EmptyStatePlaceholder(
     message: String,
     modifier: Modifier = Modifier,
 ) {
-    val isDark = LocalDarkMode.current
-    val resolvedIconTint = if (isDark) DarkTextTertiary.copy(alpha = 0.3f)
-                           else TextTertiary.copy(alpha = 0.3f)
+    val colors = LocalEggRiceColors.current
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -30,15 +28,14 @@ fun EmptyStatePlaceholder(
             Icon(
                 icon,
                 contentDescription = null,
-                tint = resolvedIconTint,
+                tint = colors.textTertiary.copy(alpha = 0.3f),
                 modifier = Modifier.size(64.dp)
             )
             Spacer(Modifier.height(12.dp))
             Text(
                 message,
                 fontSize = 14.sp,
-                color = if (isDark) DarkTextTertiary.copy(alpha = 0.5f)
-                        else TextTertiary.copy(alpha = 0.5f),
+                color = colors.textTertiary.copy(alpha = 0.5f),
                 textAlign = TextAlign.Center,
                 lineHeight = 22.sp
             )

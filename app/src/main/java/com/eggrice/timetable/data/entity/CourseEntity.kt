@@ -1,9 +1,10 @@
 package com.eggrice.timetable.data.entity
 
+import androidx.compose.runtime.Immutable
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-// 课程实体。weeks为空=全周显示；weekType为all/odd/even；startSlot/endSlot决定跨N节高度
+@Immutable
 @Entity(tableName = "courses")
 data class CourseEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -20,6 +21,7 @@ data class CourseEntity(
     val schemeId: Long = 0        // 0=default scheme
 )
 
+@Immutable
 @Entity(tableName = "time_slots")
 data class TimeSlotEntity(
     @PrimaryKey val slot: Int,    // 1-12

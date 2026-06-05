@@ -29,6 +29,21 @@ data class VersionLog(
 
 val changelog = listOf(
     VersionLog(
+        version = "v6.86",
+        date = "2026-06-04",
+        features = listOf(
+            "「今天吃什么」升级为食堂菜单：支持按一食堂/二食堂/三食堂/外卖分类",
+            "菜品支持录入窗口名称和价格，随机抽取解决选择困难",
+            "菜单支持导入/导出分享，一人录入全校可用",
+            "新增课表页面自定义壁纸功能，从相册选择图片作为背景"
+        ),
+        improvements = listOf(
+            "个人信息卡片放大优化：更大头像、时段问候语、学校标签展示",
+            "个性化配置移除重复的「配色主题」入口，统一在通用设置中管理",
+            "课程卡片圆角/文字大小等默认值优化，信息展示更完整"
+        )
+    ),
+    VersionLog(
         version = "v6.85",
         date = "2026-06-02",
         improvements = listOf(
@@ -144,7 +159,7 @@ val changelog = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangelogScreen(onBack: () -> Unit) {
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     Scaffold(
         topBar = {
@@ -155,10 +170,10 @@ fun ChangelogScreen(onBack: () -> Unit) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceCard)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceCard)
             )
         },
-        containerColor = if (isDark) DarkSurface else SurfaceCard
+        containerColor = colors.surfaceBase
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -176,12 +191,12 @@ fun ChangelogScreen(onBack: () -> Unit) {
 
 @Composable
 private fun VersionCard(log: VersionLog, isFirst: Boolean) {
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDark) DarkSurfaceCard else SurfaceCard
+            containerColor = colors.surfaceCard
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isFirst) 2.dp else 1.dp)
     ) {
@@ -190,13 +205,13 @@ private fun VersionCard(log: VersionLog, isFirst: Boolean) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = if (isFirst) accentColor() else accentSoftColor()
+                    color = if (isFirst) colors.accentMain else colors.surfaceHighlight
                 ) {
                     Text(
                         text = log.version,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isFirst) SurfaceCard else accentColor(),
+                        color = if (isFirst) colors.surfaceCard else colors.accentMain,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
@@ -204,7 +219,7 @@ private fun VersionCard(log: VersionLog, isFirst: Boolean) {
                 Text(
                     text = log.date,
                     fontSize = 13.sp,
-                    color = if (isDark) DarkTextTertiary else TextTertiary
+                    color = colors.textTertiary
                 )
             }
 
@@ -220,7 +235,7 @@ private fun VersionCard(log: VersionLog, isFirst: Boolean) {
             // Fixes
             if (log.fixes.isNotEmpty()) {
                 if (log.features.isNotEmpty()) Spacer(Modifier.height(6.dp))
-                SectionTag("修复BUG", DangerColor)
+                SectionTag("修复BUG", colors.danger)
                 Spacer(Modifier.height(4.dp))
                 log.fixes.forEach { Bullet(it) }
             }
@@ -254,20 +269,20 @@ private fun SectionTag(label: String, color: Color) {
 
 @Composable
 private fun Bullet(text: String) {
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     Row(
         modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
     ) {
         Text(
             text = "·",
             fontSize = 14.sp,
-            color = if (isDark) DarkTextTertiary else TextTertiary
+            color = colors.textTertiary
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = text,
             fontSize = 13.sp,
-            color = if (isDark) DarkTextSecondary else TextSecondary,
+            color = colors.textSecondary,
             lineHeight = 18.sp
         )
     }

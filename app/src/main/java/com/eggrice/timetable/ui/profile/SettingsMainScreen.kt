@@ -55,7 +55,7 @@ fun SettingsMainScreen(
     onReminderTime: () -> Unit,
     onVibrationMode: () -> Unit = {}
 ) {
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     val reminderEnabled by container.reminderEnabled.collectAsState()
     val reminderMinutes by container.reminderMinutes.collectAsState()
     val autoUpdate by container.autoUpdate.collectAsState()
@@ -70,7 +70,7 @@ fun SettingsMainScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceCard)
             )
         }
     ) { padding ->
@@ -78,7 +78,7 @@ fun SettingsMainScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(if (isDark) DarkSurfaceAlt else SurfaceAlt)
+                .background(colors.surfaceAlt)
         ) {
             // ── Sub-item 1: 时间段管理 ──
             SettingsMenuItem(
@@ -148,9 +148,10 @@ internal fun SettingsMenuItem(
     onClick: () -> Unit
 ) {
     val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     Surface(
-        color = if (isDark) DarkSurfaceCard else SurfaceCard,
+        color = colors.surfaceCard,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -164,25 +165,25 @@ internal fun SettingsMenuItem(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (isDark) DarkAccentSoft else accentSoftColor()),
+                    .background(colors.surfaceHighlight),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, null, tint = accentColor(), modifier = Modifier.size(22.dp))
+                Icon(icon, null, tint = colors.accentMain, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (isDark) DarkTextPrimary else TextPrimary)
-                Text(subtitle, fontSize = 12.sp, color = if (isDark) DarkTextTertiary else TextTertiary)
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = colors.textPrimary)
+                Text(subtitle, fontSize = 12.sp, color = colors.textTertiary)
             }
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 null,
-                tint = if (isDark) BorderDark else IconTertiary,
+                tint = colors.textTertiary,
                 modifier = Modifier.size(20.dp)
             )
         }
     }
-    HorizontalDivider(color = if (isDark) DarkDivider else Divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 70.dp))
+    HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp, modifier = Modifier.padding(start = 70.dp))
 }
 
 @Composable
@@ -194,9 +195,10 @@ private fun SettingsSwitchItem(
     onToggle: () -> Unit
 ) {
     val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     Surface(
-        color = if (isDark) DarkSurfaceCard else SurfaceCard,
+        color = colors.surfaceCard,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -209,29 +211,29 @@ private fun SettingsSwitchItem(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (isDark) DarkAccentSoft else accentSoftColor()),
+                    .background(colors.surfaceHighlight),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, null, tint = accentColor(), modifier = Modifier.size(22.dp))
+                Icon(icon, null, tint = colors.accentMain, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (isDark) DarkTextPrimary else TextPrimary)
-                Text(subtitle, fontSize = 12.sp, color = if (isDark) DarkTextTertiary else TextTertiary)
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = colors.textPrimary)
+                Text(subtitle, fontSize = 12.sp, color = colors.textTertiary)
             }
             Switch(
                 checked = checked,
                 onCheckedChange = { onToggle() },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = accentColor(),
-                    uncheckedThumbColor = if (isDark) BorderDark else Color.White,
-                    uncheckedTrackColor = if (isDark) BorderDark else BorderLight
+                    checkedTrackColor = colors.accentMain,
+                    uncheckedThumbColor = colors.surfaceCard,
+                    uncheckedTrackColor = colors.borderDivider
                 )
             )
         }
     }
-    HorizontalDivider(color = if (isDark) DarkDivider else Divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 70.dp))
+    HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp, modifier = Modifier.padding(start = 70.dp))
 }
 
 // ═══════════════════════════════════════════
@@ -258,7 +260,7 @@ fun SemesterSettingsPage(
     var month by remember { mutableIntStateOf(savedParts.getOrElse(1) { 2 }) }
     var day by remember { mutableIntStateOf(savedParts.getOrElse(2) { 1 }) }
 
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     val editingStart = "$year-${String.format("%02d", month)}-${String.format("%02d", day)}"
     val autoWeek = remember(year, month, day, editingWeeks) {
         try {
@@ -312,10 +314,10 @@ fun SemesterSettingsPage(
                         container.setSemesterWeeks(editingWeeks)
                         Toast.makeText(context, "学期设置已保存", Toast.LENGTH_SHORT).show()
                     }) {
-                        Text("保存", color = accentColor(), fontWeight = FontWeight.Bold)
+                        Text("保存", color = colors.accentMain, fontWeight = FontWeight.Bold)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceCard)
             )
         }
     ) { padding ->
@@ -323,7 +325,7 @@ fun SemesterSettingsPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(if (isDark) DarkSurfaceAlt else SurfaceAlt)
+                .background(colors.surfaceAlt)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -332,18 +334,18 @@ fun SemesterSettingsPage(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard)
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("当前自动计算周次", fontSize = 13.sp, color = if (isDark) DarkTextTertiary else TextTertiary)
+                    Text("当前自动计算周次", fontSize = 13.sp, color = colors.textTertiary)
                     Text(
                         "第 $autoWeek 周",
                         fontSize = 28.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = accentColor()
+                        color = colors.accentMain
                     )
                 }
             }
@@ -352,7 +354,7 @@ fun SemesterSettingsPage(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard)
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -362,12 +364,12 @@ fun SemesterSettingsPage(
                         "快捷设置当前周次",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (isDark) DarkTextPrimary else TextPrimary
+                        color = colors.textPrimary
                     )
                     Text(
                         "选择后将自动推算学期开始日期（周一）",
                         fontSize = 11.sp,
-                        color = if (isDark) DarkTextTertiary else TextTertiary
+                        color = colors.textTertiary
                     )
                     Spacer(Modifier.height(12.dp))
                     WheelPicker(
@@ -384,7 +386,7 @@ fun SemesterSettingsPage(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard)
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -394,7 +396,7 @@ fun SemesterSettingsPage(
                         "学期开始日期",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (isDark) DarkTextPrimary else TextPrimary
+                        color = colors.textPrimary
                     )
                     Spacer(Modifier.height(12.dp))
                     Row(
@@ -431,7 +433,7 @@ fun SemesterSettingsPage(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard)
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -441,7 +443,7 @@ fun SemesterSettingsPage(
                         "学期总周数",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (isDark) DarkTextPrimary else TextPrimary
+                        color = colors.textPrimary
                     )
                     Spacer(Modifier.height(12.dp))
                     WheelPicker(
@@ -471,7 +473,7 @@ fun DisplaySettingsPage(
     val showRoom by container.showRoom.collectAsState()
     val showSlotTime by container.showSlotTime.collectAsState()
     val showOddEven by container.showOddEven.collectAsState()
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     Scaffold(
         topBar = {
@@ -482,7 +484,7 @@ fun DisplaySettingsPage(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceCard)
             )
         }
     ) { padding ->
@@ -490,7 +492,7 @@ fun DisplaySettingsPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(if (isDark) DarkSurfaceAlt else SurfaceAlt)
+                .background(colors.surfaceAlt)
         ) {
             DisplaySwitchItem("显示教师", "在课程卡片上显示教师姓名", showTeacher) { container.toggleShowTeacher() }
             DisplaySwitchItem("显示教室", "在课程卡片上显示教室位置", showRoom) { container.toggleShowRoom() }
@@ -508,9 +510,10 @@ private fun DisplaySwitchItem(
     onToggle: () -> Unit
 ) {
     val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     Surface(
-        color = if (isDark) DarkSurfaceCard else SurfaceCard,
+        color = colors.surfaceCard,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -520,22 +523,22 @@ private fun DisplaySwitchItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (isDark) DarkTextPrimary else TextPrimary)
-                Text(subtitle, fontSize = 12.sp, color = if (isDark) DarkTextTertiary else TextTertiary)
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = colors.textPrimary)
+                Text(subtitle, fontSize = 12.sp, color = colors.textTertiary)
             }
             Switch(
                 checked = checked,
                 onCheckedChange = { onToggle() },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = accentColor(),
-                    uncheckedThumbColor = if (isDark) BorderDark else Color.White,
-                    uncheckedTrackColor = if (isDark) BorderDark else BorderLight
+                    checkedTrackColor = colors.accentMain,
+                    uncheckedThumbColor = colors.surfaceCard,
+                    uncheckedTrackColor = colors.borderDivider
                 )
             )
         }
     }
-    HorizontalDivider(color = if (isDark) DarkDivider else Divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 16.dp))
+    HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp, modifier = Modifier.padding(start = 16.dp))
 }
 
 // ═══════════════════════════════════════════
@@ -552,6 +555,7 @@ private fun WheelPicker(
     modifier: Modifier = Modifier
 ) {
     val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     val items = range.toList()
     val itemHeight = 44.dp
     val visibleCount = 3
@@ -586,7 +590,7 @@ private fun WheelPicker(
                 .height(itemHeight)
                 .background(
                     if (isDark) Color.White.copy(alpha = 0.05f)
-                    else accentColor().copy(alpha = 0.08f),
+                    else colors.accentMain.copy(alpha = 0.08f),
                     RoundedCornerShape(8.dp)
                 )
         )
@@ -600,7 +604,7 @@ private fun WheelPicker(
                     drawRect(
                         brush = Brush.verticalGradient(
                             colors = listOf(
-                                if (isDark) DarkSurfaceCard else SurfaceCard,
+                                colors.surfaceCard,
                                 Color.Transparent
                             ),
                             startY = 0f,
@@ -612,7 +616,7 @@ private fun WheelPicker(
                         brush = Brush.verticalGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                if (isDark) DarkSurfaceCard else SurfaceCard
+                                colors.surfaceCard
                             ),
                             startY = size.height - itemHeightPx * 1.5f,
                             endY = size.height
@@ -643,9 +647,8 @@ private fun WheelPicker(
                         fontSize = if (isSelected) 17.sp else 13.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = when {
-                            isSelected -> accentColor()
-                            isDark -> DarkTextTertiary
-                            else -> TextTertiary
+                            isSelected -> colors.accentMain
+                            else -> colors.textTertiary
                         }
                     )
                 }

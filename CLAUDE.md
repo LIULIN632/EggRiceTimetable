@@ -4,39 +4,55 @@
 
 ---
 
-## 🤖 模型自动选择策略
-
-> 根据任务复杂度自动切换模型，节省 token 成本。
-
-| 任务类型 | 模型 | 示例 |
-|---------|------|------|
-| **简单任务** | `haiku` | 修改变量名、改文案、单行 bug 修复、读文件、问简单问题 |
-| **复杂任务** | `opus` | 多文件重构、调试复杂逻辑、新增功能模块、架构设计、代码审查 |
-
-**判断规则**：
-- 预计修改 ≤ 2 个文件、≤ 20 行 → Haiku
-- 预计修改 > 2 个文件 或 > 20 行 或涉及架构/新功能 → Opus
-- 不确定时默认 Opus，宁可多用不可少用
-- Agent 子任务默认用 Haiku（探索、搜索、简单问答），复杂 Agent 显式指定 Opus
-
----
 
 ## 🧠 编码工具优先级
 
-> **🔴 每次会话启动时必须执行：`! reasonix code` 启动 Reasonix 终端智能体。**
+> **🔴 在真实终端中手动启动 Reasonix 终端智能体。**
 > 
 > Reasonix 是 DeepSeek 原生编码 Agent（npm: `reasonix`），负责所有编码任务的执行。
 > 仅在 Reasonix 无法覆盖的场景下，才回退到 Claude Code。
 > 
+> ```bash
+> # 在 Windows Terminal / PowerShell / Git Bash 中执行：
+> reasonix code
+> ```
+> 
+> ⚠️ Reasonix 需要 TTY 终端，无法在 Claude Code 的 Bash 中启动。
 > ⚠️ 此规则为项目基础设施，禁止删除或弱化。
 
-## 📦 打包（用户说"打包"时执行）
+## 📦 永久打包规范
 
-1. 读 `app/build.gradle.kts`，`versionCode` +1，`versionName` 递增
-2. `gradlew assembleDebug` 编译
-3. `gradlew renameApk` 重命名到根目录
-4. 告知版本号、文件名、大小
-5. 用户可双击 `build.bat` 自行打包
+> **用户说"打包"时，直接执行 `./build.sh`，无需其他任何操作。**
+
+```bash
+./build.sh
+```
+
+脚本自动完成：版本号递增 → `assembleRelease` → `renameApk` → 输出结果。禁止手动逐步执行。
+
+### 构建类型
+
+| 场景 | 命令 | 说明 |
+|------|------|------|
+| **正式发布** | `./build.sh` | 版本号自动 +1，Release 包含签名+R8+资源压缩 |
+| **开发测试** | `./gradlew assembleDebug` | 仅本地调试，不发布 |
+
+### 版本号规则
+
+- `versionCode`：每次打包 +1（整数递增）
+- `versionName`：小版本号 +1（如 7.17 → 7.18）
+- 脚本自动读取并递增，无需手动修改
+
+### Release 配置
+
+- R8 混淆 + 资源压缩已开启（`isMinifyEnabled = true`, `isShrinkResources = true`）
+- 仅保留中文资源（`zh-rCN`, `zh`）
+- 签名配置自动读取 `keystore.properties`
+
+### 输出文件
+
+- 根目录：`D:\AICAN\蛋炒饭课程表_vX.X.apk`
+- 打包脚本：`D:\AICAN\build.sh`
 
 ---
 

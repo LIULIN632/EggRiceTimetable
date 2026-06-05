@@ -13,6 +13,7 @@
 -keepclassmembers class com.eggrice.timetable.** { <fields>; }
 -keep class com.eggrice.timetable.data.entity.** { *; }
 -keep class com.eggrice.timetable.network.** { *; }
+-keep class com.eggrice.timetable.ui.import_.ImportCourseJson { *; }
 
 # OkHttp + Okio
 -dontwarn okhttp3.**

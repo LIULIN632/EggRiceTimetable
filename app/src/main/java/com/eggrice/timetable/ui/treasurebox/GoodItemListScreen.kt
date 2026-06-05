@@ -48,7 +48,6 @@ private val PRESET_GOOD_ITEMS = listOf(
     PresetGoodItem("显示器", "数码", "笔记本外接大屏生产力拉满", "写论文、敲代码、看网课多窗口并行，宿舍桌面空间换效率，早用早享受", "¥600-1500"),
     PresetGoodItem("机械键盘", "数码", "打字手感质的飞跃", "大学四年敲键盘时间超乎想象，一把好键盘护手腕、提效率，室友也会感谢你选静音轴", "¥200-600"),
     PresetGoodItem("U盘/移动硬盘", "数码", "资料备份和传输的生命线", "作业、论文、课件随身带，小组作业互相传文件必备，坏了哭都来不及建议买两个", "¥30-300"),
-    PresetGoodItem("降噪耳塞/耳机", "数码", "宿舍嘈杂时的救命装备", "室友打游戏、打电话、早起动静大，一副好降噪让你随时进入自己的学习世界", "¥50-800"),
     PresetGoodItem("拓展坞", "数码", "笔记本接口不够用的救星", "轻薄本通常只有1-2个Type-C口，接U盘、显示器、网线全靠它，开会投屏也方便", "¥80-300"),
 
     // ── 生活 ──
@@ -81,7 +80,7 @@ fun GoodItemListScreen(
     schemeId: Long,
     onBack: () -> Unit
 ) {
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
@@ -136,8 +135,8 @@ fun GoodItemListScreen(
                             modifier = Modifier.fillMaxWidth(),
                             textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = accentColor(),
-                                cursorColor = accentColor(),
+                                focusedBorderColor = colors.accentMain,
+                                cursorColor = colors.accentMain,
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent
                             ),
@@ -161,15 +160,15 @@ fun GoodItemListScreen(
                         Icon(
                             if (showSearch) Icons.Filled.Close else Icons.Outlined.Search,
                             "搜索",
-                            tint = if (showSearch) accentColor() else if (isDark) DarkTextSecondary else TextSecondary
+                            tint = if (showSearch) colors.accentMain else colors.textSecondary
                         )
                     }
                     IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Filled.Add, "添加好物", tint = accentColor())
+                        Icon(Icons.Filled.Add, "添加好物", tint = colors.accentMain)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isDark) DarkSurfaceCard else SurfaceCard
+                    containerColor = colors.surfaceCard
                 )
             )
         }
@@ -178,7 +177,7 @@ fun GoodItemListScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(if (isDark) DarkSurfaceAlt else SurfaceAlt)
+                .background(colors.surfaceAlt)
         ) {
             // ── Progress summary ──
             if (items.isNotEmpty()) {
@@ -187,7 +186,7 @@ fun GoodItemListScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else SurfaceCard),
+                    colors = CardDefaults.cardColors(containerColor = colors.surfaceCard),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Row(
@@ -200,17 +199,17 @@ fun GoodItemListScreen(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(accentColor().copy(alpha = 0.12f)),
+                                .background(colors.accentMain.copy(alpha = 0.12f)),
                             contentAlignment = Alignment.Center
                         ) {
                             if (purchasedCount >= items.size)
-                                Icon(Icons.Filled.CheckCircle, null, tint = accentColor(), modifier = Modifier.size(20.dp))
+                                Icon(Icons.Filled.CheckCircle, null, tint = colors.accentMain, modifier = Modifier.size(20.dp))
                             else
                                 Text(
                                     "$purchasedCount",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = accentColor()
+                                    color = colors.accentMain
                                 )
                         }
                         Spacer(Modifier.width(12.dp))
@@ -219,14 +218,14 @@ fun GoodItemListScreen(
                                 "已入手 $purchasedCount / ${items.size} 件好物",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isDark) DarkTextPrimary else TextPrimary
+                                color = colors.textPrimary
                             )
                             Text(
                                 if (purchasedCount == 0) "早买早享受，从第一个开始！"
                                 else if (purchasedCount >= items.size) "全部入手，大学生活圆满！"
                                 else "还有 ${items.size - purchasedCount} 件好物等你解锁",
                                 fontSize = 11.sp,
-                                color = if (isDark) DarkTextTertiary else TextTertiary
+                                color = colors.textTertiary
                             )
                         }
                     }
@@ -255,10 +254,10 @@ fun GoodItemListScreen(
                             )
                         },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = accentColor(),
+                            selectedContainerColor = colors.accentMain,
                             selectedLabelColor = Color.White,
-                            containerColor = if (isDark) DarkSurfaceCard else SurfaceCard,
-                            labelColor = if (isDark) DarkTextSecondary else TextSecondary
+                            containerColor = colors.surfaceCard,
+                            labelColor = colors.textSecondary
                         )
                     )
                 }
@@ -281,7 +280,6 @@ fun GoodItemListScreen(
                     items(sorted, key = { it.id }) { item ->
                         GoodItemCard(
                             item = item,
-                            isDark = isDark,
                             onToggle = {
                                 scope.launch {
                                     repository.updateGoodItem(item.copy(purchased = !item.purchased))
@@ -326,10 +324,10 @@ fun GoodItemListScreen(
 @Composable
 private fun GoodItemCard(
     item: GoodItemEntity,
-    isDark: Boolean,
     onToggle: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     var expanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
@@ -340,9 +338,9 @@ private fun GoodItemCard(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (item.purchased)
-                (if (isDark) DarkSurfaceCard else SurfaceCard).copy(alpha = 0.5f)
+                colors.surfaceCard.copy(alpha = 0.5f)
             else
-                if (isDark) DarkSurfaceCard else SurfaceCard
+                colors.surfaceCard
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (item.purchased) 0.dp else 1.dp)
     ) {
@@ -357,8 +355,8 @@ private fun GoodItemCard(
                     checked = item.purchased,
                     onCheckedChange = { onToggle() },
                     colors = CheckboxDefaults.colors(
-                        checkedColor = accentColor(),
-                        uncheckedColor = if (isDark) DarkTextTertiary else TextTertiary
+                        checkedColor = colors.accentMain,
+                        uncheckedColor = colors.textTertiary
                     )
                 )
                 Spacer(Modifier.width(4.dp))
@@ -369,9 +367,9 @@ private fun GoodItemCard(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (item.purchased)
-                                (if (isDark) DarkTextTertiary else TextTertiary).copy(alpha = 0.6f)
+                                colors.textTertiary.copy(alpha = 0.6f)
                             else
-                                if (isDark) DarkTextPrimary else TextPrimary,
+                                colors.textPrimary,
                             textDecoration = if (item.purchased) TextDecoration.LineThrough else TextDecoration.None,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -382,14 +380,14 @@ private fun GoodItemCard(
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
                                 color = if (item.purchased)
-                                    (accentSoftColor()).copy(alpha = 0.3f)
+                                    colors.surfaceHighlight.copy(alpha = 0.3f)
                                 else
-                                    accentSoftColor().copy(alpha = 0.5f)
+                                    colors.surfaceHighlight.copy(alpha = 0.5f)
                             ) {
                                 Text(
                                     item.referencePrice,
                                     fontSize = 11.sp,
-                                    color = accentColor(),
+                                    color = colors.accentMain,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
@@ -401,7 +399,7 @@ private fun GoodItemCard(
                         Text(
                             item.reason,
                             fontSize = 12.sp,
-                            color = accentColor().copy(alpha = 0.8f),
+                            color = colors.accentMain.copy(alpha = 0.8f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -410,7 +408,7 @@ private fun GoodItemCard(
                 IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(28.dp)) {
                     Icon(
                         Icons.Outlined.Close, "删除",
-                        tint = (if (isDark) DarkTextTertiary else TextTertiary).copy(alpha = 0.3f),
+                        tint = colors.textTertiary.copy(alpha = 0.3f),
                         modifier = Modifier.size(14.dp)
                     )
                 }
@@ -422,7 +420,7 @@ private fun GoodItemCard(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
-                    color = if (isDark) DarkSurfaceAlt else SurfaceAlt
+                    color = colors.surfaceAlt
                 ) {
                     Row(
                         modifier = Modifier.padding(10.dp),
@@ -433,7 +431,7 @@ private fun GoodItemCard(
                         Text(
                             item.description,
                             fontSize = 12.sp,
-                            color = if (isDark) DarkTextSecondary else TextSecondary,
+                            color = colors.textSecondary,
                             lineHeight = 18.sp
                         )
                     }
@@ -450,7 +448,7 @@ private fun GoodItemCard(
             confirmButton = {
                 Button(
                     onClick = { onDelete(); showDeleteConfirm = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE57373))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC89098))
                 ) { Text("删除") }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } }
@@ -464,6 +462,7 @@ private fun AddGoodItemDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, category: String, reason: String, description: String, price: String) -> Unit
 ) {
+    val colors = LocalEggRiceColors.current
     var name by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("自定义") }
     var reason by remember { mutableStateOf("") }
@@ -484,7 +483,7 @@ private fun AddGoodItemDialog(
                     placeholder = { Text("如：电动牙刷") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor(), cursorColor = accentColor())
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.accentMain, cursorColor = colors.accentMain)
                 )
                 ExposedDropdownMenuBox(
                     expanded = catExpanded,
@@ -498,7 +497,7 @@ private fun AddGoodItemDialog(
                         modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true),
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catExpanded) },
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor())
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.accentMain)
                     )
                     ExposedDropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
                         categories.forEach { c ->
@@ -513,7 +512,7 @@ private fun AddGoodItemDialog(
                     placeholder = { Text("如：宿舍生活幸福感来源") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor(), cursorColor = accentColor())
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.accentMain, cursorColor = colors.accentMain)
                 )
                 OutlinedTextField(
                     value = description,
@@ -522,7 +521,7 @@ private fun AddGoodItemDialog(
                     placeholder = { Text("如：四年下来能省很多时间...") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor(), cursorColor = accentColor())
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.accentMain, cursorColor = colors.accentMain)
                 )
                 OutlinedTextField(
                     value = price,
@@ -531,7 +530,7 @@ private fun AddGoodItemDialog(
                     placeholder = { Text("如：¥100-300") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor(), cursorColor = accentColor())
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.accentMain, cursorColor = colors.accentMain)
                 )
             }
         },
@@ -539,7 +538,7 @@ private fun AddGoodItemDialog(
             Button(
                 onClick = { onConfirm(name, category, reason, description, price) },
                 enabled = name.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain)
             ) { Text("添加") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }

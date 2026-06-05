@@ -1,7 +1,9 @@
 package com.eggrice.timetable.ui.treasurebox
 
+import androidx.compose.runtime.Immutable
 import java.util.UUID
 
+@Immutable
 data class LearningResource(
     val id: String = UUID.randomUUID().toString(),
     val subject: String,
@@ -15,10 +17,13 @@ data class LearningResource(
     val isCustom: Boolean = false
 )
 
+@Immutable
 data class FoodOption(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val category: String = "",
+    val windowName: String = "",
+    val price: String = "",
     val isCustom: Boolean = false
 )
 

@@ -1,5 +1,6 @@
 package com.eggrice.timetable.ui.treasurebox
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -11,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -25,11 +25,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.eggrice.timetable.ui.theme.*
-import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,13 +40,18 @@ fun FoodPickerPage(onBack: () -> Unit) {
     val pickedFood by viewModel.pickedFood.collectAsState()
     val isRolling by viewModel.isRolling.collectAsState()
     val foodOptions by viewModel.foodOptions.collectAsState()
-    val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var editingFood by remember { mutableStateOf<FoodOption?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf("全部") }
 
     val categories = remember(foodOptions) {
-        listOf("全部") + foodOptions.map { it.category }.distinct().filter { it.isNotEmpty() }
+        listOf("全部", "一食堂", "二食堂", "三食堂", "外卖") +
+            foodOptions.map { it.category }.distinct().filter {
+                it.isNotEmpty() && it !in listOf("一食堂", "二食堂", "三食堂", "外卖")
+            }
     }
 
     val filteredFood = remember(foodOptions, selectedCategory) {
@@ -54,7 +59,6 @@ fun FoodPickerPage(onBack: () -> Unit) {
         else foodOptions.filter { it.category == selectedCategory }
     }
 
-    // Scale animation for picked food
     val scaleAnim by animateFloatAsState(
         targetValue = if (pickedFood != null) 1f else 0.9f,
         animationSpec = spring(dampingRatio = 0.5f, stiffness = 300f)
@@ -70,12 +74,33 @@ fun FoodPickerPage(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    // Export
+                    IconButton(onClick = {
+                        val json = viewModel.exportFoodOptionsJson(includeDefaults = false)
+                        if (json == "[]") {
+                            Toast.makeText(context, "暂无自定义菜单可导出", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, json)
+                                putExtra(Intent.EXTRA_SUBJECT, "食堂菜单分享")
+                            }
+                            context.startActivity(Intent.createChooser(intent, "分享菜单"))
+                        }
+                    }) {
+                        Icon(Icons.Outlined.Share, "导出", tint = colors.accentMain)
+                    }
+                    // Import
+                    IconButton(onClick = { showImportDialog = true }) {
+                        Icon(Icons.Outlined.FileDownload, "导入", tint = colors.accentMain)
+                    }
+                    // Add
                     IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Filled.Add, "添加美食", tint = accentColor())
+                        Icon(Icons.Filled.Add, "添加菜品", tint = colors.accentMain)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isDark) DarkSurfaceCard else Color.White
+                    containerColor = colors.surfaceCard
                 )
             )
         }
@@ -84,40 +109,40 @@ fun FoodPickerPage(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(if (isDark) DarkSurfaceAlt else SurfaceAlt)
+                .background(colors.surfaceAlt)
         ) {
-            // ── Picker area ──
+            // ── Random picker card ──
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else Color.White),
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceCard),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         if (pickedFood == null) "今天吃什么呢？" else "就决定是你了！",
-                        fontSize = 13.sp,
-                        color = if (isDark) DarkTextTertiary else TextTertiary
+                        fontSize = 12.sp,
+                        color = colors.textTertiary
                     )
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
 
                     // Food display circle
                     Box(
                         modifier = Modifier
-                            .size(140.dp)
+                            .size(130.dp)
                             .scale(scaleAnim)
                             .clip(CircleShape)
                             .background(
                                 brush = Brush.linearGradient(
-                                    listOf(Color(0xFFFF9A9E), Color(0xFFFAD0C4))
+                                    listOf(Color(0xFFC8A0A4), Color(0xFFD8C0B8))
                                 )
                             ),
                         contentAlignment = Alignment.Center
@@ -127,56 +152,65 @@ fun FoodPickerPage(onBack: () -> Unit) {
                                 Icon(
                                     Icons.Outlined.Restaurant, null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(30.dp)
                                 )
-                                Spacer(Modifier.height(6.dp))
+                                Spacer(Modifier.height(4.dp))
                                 Text(
                                     pickedFood!!.name,
-                                    fontSize = 20.sp,
+                                    fontSize = 18.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
                                     textAlign = TextAlign.Center,
                                     maxLines = 2
                                 )
-                                if (pickedFood!!.category.isNotEmpty()) {
+                                if (pickedFood!!.windowName.isNotEmpty()) {
+                                    Spacer(Modifier.height(2.dp))
                                     Text(
-                                        pickedFood!!.category,
-                                        fontSize = 11.sp,
+                                        pickedFood!!.windowName,
+                                        fontSize = 10.sp,
                                         color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                }
+                                if (pickedFood!!.price.isNotEmpty()) {
+                                    Text(
+                                        "¥${pickedFood!!.price}",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.9f)
                                     )
                                 }
                             } else {
                                 Icon(
-                                    Icons.AutoMirrored.Outlined.HelpOutline, null,
-                                    tint = Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(48.dp)
+                                    Icons.Outlined.Restaurant, null,
+                                    tint = Color.White.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(44.dp)
                                 )
                                 Spacer(Modifier.height(4.dp))
-                                Text("???", fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f), fontWeight = FontWeight.Bold)
+                                Text("???", fontSize = 16.sp, color = Color.White.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(16.dp))
 
                     // Roll button
                     Button(
                         onClick = { viewModel.pickRandomFood() },
                         enabled = !isRolling,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5576C))
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(23.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB89498))
                     ) {
                         if (isRolling) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(16.dp),
                                 color = Color.White,
                                 strokeWidth = 2.dp
                             )
                             Spacer(Modifier.width(8.dp))
                             Text("抽选中...", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Outlined.Casino, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(if (pickedFood == null) "开始抽取" else "换一个", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
@@ -184,16 +218,16 @@ fun FoodPickerPage(onBack: () -> Unit) {
                 }
             }
 
-            // ── Food list ──
+            // ── List header ──
             Text(
-                "美食列表 (${filteredFood.size})",
+                "菜品列表 (${filteredFood.size})",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = if (isDark) DarkTextSecondary else TextSecondary,
+                color = colors.textSecondary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             )
 
-            // Category filter
+            // ── Category filter ──
             LazyRow(
                 modifier = Modifier.padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -204,65 +238,38 @@ fun FoodPickerPage(onBack: () -> Unit) {
                         onClick = { selectedCategory = cat },
                         label = { Text(cat, fontSize = 11.sp) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFFF5576C),
+                            selectedContainerColor = Color(0xFFB89498),
                             selectedLabelColor = Color.White
                         )
                     )
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
 
+            // ── Food list ──
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(filteredFood) { food ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = if (isDark) DarkSurfaceCard else Color.White)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Emoji based on category
-                            val emoji = when {
-                                food.category.contains("面") -> "🍜"
-                                food.category.contains("快餐") -> "🍔"
-                                food.category.contains("小吃") -> "🍢"
-                                food.category.contains("外卖") -> "🥡"
-                                else -> "🍚"
-                            }
-                            Text(emoji, fontSize = 20.sp)
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(food.name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (isDark) DarkTextPrimary else TextPrimary)
-                                if (food.category.isNotEmpty()) {
-                                    Text(food.category, fontSize = 11.sp, color = TextTertiary)
-                                }
-                            }
-                            if (food.isCustom) {
-                                IconButton(
-                                    onClick = { viewModel.deleteFoodOption(food.id) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Outlined.Close, "删除", tint = Color(0xFFE57373), modifier = Modifier.size(14.dp))
-                                }
-                            }
-                        }
-                    }
+                    FoodCard(
+                        food = food,
+                        onEdit = if (food.isCustom) {{ editingFood = food }} else null,
+                        onDelete = if (food.isCustom) {{ viewModel.deleteFoodOption(food.id) }} else null
+                    )
                 }
+                // Bottom spacer
+                item { Spacer(Modifier.height(80.dp)) }
             }
         }
     }
 
+    // ── Dialogs ──
     if (showAddDialog) {
-        AddFoodDialog(
+        FoodFormDialog(
+            title = "添加菜品",
             onDismiss = { showAddDialog = false },
             onConfirm = { food ->
                 viewModel.addFoodOption(food)
@@ -271,32 +278,176 @@ fun FoodPickerPage(onBack: () -> Unit) {
             }
         )
     }
+
+    if (editingFood != null) {
+        FoodFormDialog(
+            title = "编辑菜品",
+            initial = editingFood,
+            onDismiss = { editingFood = null },
+            onConfirm = { food ->
+                viewModel.updateFoodOption(food)
+                editingFood = null
+                Toast.makeText(context, "已更新「${food.name}」", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showImportDialog) {
+        ImportFoodDialog(
+            onDismiss = { showImportDialog = false },
+            onImport = { json ->
+                val count = viewModel.importFoodOptionsJson(json)
+                showImportDialog = false
+                if (count > 0) {
+                    Toast.makeText(context, "成功导入 $count 个菜品", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "未导入新菜品（可能已存在或格式错误）", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
 }
+
+// ═══════════════════════════════════════════
+//  Food card item
+// ═══════════════════════════════════════════
+
+@Composable
+private fun FoodCard(
+    food: FoodOption,
+    onEdit: (() -> Unit)?,
+    onDelete: (() -> Unit)?
+) {
+    val colors = LocalEggRiceColors.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Emoji icon
+            val emoji = when {
+                food.category == "一食堂" -> "🍽️"
+                food.category == "二食堂" -> "🍴"
+                food.category == "三食堂" -> "🥢"
+                food.category == "外卖" -> "🥡"
+                food.category.contains("面") -> "🍜"
+                food.category.contains("快餐") -> "🍔"
+                food.category.contains("小吃") -> "🍢"
+                else -> "🍚"
+            }
+            Text(emoji, fontSize = 22.sp)
+            Spacer(Modifier.width(10.dp))
+
+            // Food info
+            Column(Modifier.weight(1f)) {
+                Text(
+                    food.name,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val subtitleParts = mutableListOf<String>()
+                if (food.windowName.isNotEmpty()) subtitleParts.add(food.windowName)
+                if (food.price.isNotEmpty()) subtitleParts.add("¥${food.price}")
+                if (subtitleParts.isNotEmpty()) {
+                    Text(
+                        subtitleParts.joinToString(" · "),
+                        fontSize = 11.sp,
+                        color = colors.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (food.category.isNotEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFFB89498).copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            food.category,
+                            fontSize = 10.sp,
+                            color = Color(0xFF9A7075),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
+
+            // Edit/Delete buttons (custom items only)
+            if (onEdit != null) {
+                IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Edit, "编辑", tint = colors.textTertiary, modifier = Modifier.size(16.dp))
+                }
+            }
+            if (onDelete != null) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Close, "删除", tint = Color(0xFFC89098), modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════
+//  Add / Edit food dialog
+// ═══════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddFoodDialog(
+private fun FoodFormDialog(
+    title: String,
+    initial: FoodOption? = null,
     onDismiss: () -> Unit,
     onConfirm: (FoodOption) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("自定义") }
+    var name by remember { mutableStateOf(initial?.name ?: "") }
+    var category by remember { mutableStateOf(initial?.category ?: "一食堂") }
+    var windowName by remember { mutableStateOf(initial?.windowName ?: "") }
+    var price by remember { mutableStateOf(initial?.price ?: "") }
     var catExpanded by remember { mutableStateOf(false) }
-    val categories = listOf("食堂", "外卖", "面食", "快餐", "小吃", "自定义")
+
+    val categories = listOf("一食堂", "二食堂", "三食堂", "外卖")
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加美食", fontWeight = FontWeight.Bold) },
+        title = { Text(title, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("美食名称") },
+                    label = { Text("菜品名称") },
                     placeholder = { Text("如：红烧牛肉面") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = windowName,
+                        onValueChange = { windowName = it },
+                        label = { Text("窗口") },
+                        placeholder = { Text("如：二楼6号") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = price,
+                        onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) price = it },
+                        label = { Text("价格") },
+                        placeholder = { Text("如：15") },
+                        singleLine = true,
+                        modifier = Modifier.weight(0.7f)
+                    )
+                }
                 ExposedDropdownMenuBox(
                     expanded = catExpanded,
                     onExpandedChange = { catExpanded = it }
@@ -320,10 +471,64 @@ private fun AddFoodDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(FoodOption(name = name.trim(), category = category)) },
+                onClick = {
+                    val food = FoodOption(
+                        id = initial?.id ?: java.util.UUID.randomUUID().toString(),
+                        name = name.trim(),
+                        category = category,
+                        windowName = windowName.trim(),
+                        price = price.trim(),
+                        isCustom = true
+                    )
+                    onConfirm(food)
+                },
                 enabled = name.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor())
-            ) { Text("添加") }
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB89498))
+            ) { Text(if (initial != null) "保存" else "添加") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}
+
+// ═══════════════════════════════════════════
+//  Import dialog
+// ═══════════════════════════════════════════
+
+@Composable
+private fun ImportFoodDialog(
+    onDismiss: () -> Unit,
+    onImport: (String) -> Unit
+) {
+    val colors = LocalEggRiceColors.current
+    var jsonText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("导入菜单", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "粘贴同学分享的菜单 JSON 文本，重复菜品将自动跳过。",
+                    fontSize = 12.sp,
+                    color = colors.textTertiary
+                )
+                OutlinedTextField(
+                    value = jsonText,
+                    onValueChange = { jsonText = it },
+                    label = { Text("菜单 JSON") },
+                    placeholder = { Text("粘贴菜单内容...") },
+                    minLines = 4,
+                    maxLines = 8,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onImport(jsonText.trim()) },
+                enabled = jsonText.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB89498))
+            ) { Text("导入") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )

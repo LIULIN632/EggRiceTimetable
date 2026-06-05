@@ -42,14 +42,6 @@ object DateUtils {
 
     fun weekdaysZh(): List<String> = listOf("一", "二", "三", "四", "五", "六", "日")
 
-    fun computeWeekType(weeks: List<Int>): String {
-        if (weeks.isEmpty()) return "all"
-        val allOdd = weeks.all { it % 2 == 1 }
-        val allEven = weeks.all { it % 2 == 0 }
-        return when {
-            allOdd -> "odd"
-            allEven -> "even"
-            else -> "all"
-        }
-    }
+    fun computeWeekType(weeks: List<Int>): String =
+        com.eggrice.timetable.network.computeWeekType(weeks)
 }

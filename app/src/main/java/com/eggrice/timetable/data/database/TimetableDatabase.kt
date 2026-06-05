@@ -18,7 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [CourseEntity::class, TimeSlotEntity::class, SchemeEntity::class, HomeworkEntity::class, TaskEntity::class, GoodItemEntity::class, TreeHoleEntity::class], version = 7, exportSchema = false)
+@Database(entities = [CourseEntity::class, TimeSlotEntity::class, SchemeEntity::class, HomeworkEntity::class, TaskEntity::class, GoodItemEntity::class, TreeHoleEntity::class], version = 8, exportSchema = false)
 abstract class TimetableDatabase : RoomDatabase() {
     abstract fun courseDao(): CourseDao
 
@@ -57,6 +57,15 @@ abstract class TimetableDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tree_holes ADD COLUMN author TEXT NOT NULL DEFAULT ''")
+                // Seed default tree hole messages
+                db.execSQL("INSERT INTO tree_holes (content, author, createdAt, schemeId) VALUES ('蛋炒饭好吃', '爱吃蛋炒饭', ${System.currentTimeMillis()}, 0)")
+                db.execSQL("INSERT INTO tree_holes (content, author, createdAt, schemeId) VALUES ('加油', '梦梦', ${System.currentTimeMillis()}, 0)")
+            }
+        }
+
         /** Ensure default scheme exists on fresh installs (DB created at v4, no migration runs). */
         private val CALLBACK = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -80,7 +89,7 @@ abstract class TimetableDatabase : RoomDatabase() {
         fun getInstance(context: Context): TimetableDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(context, TimetableDatabase::class.java, "timetable.db")
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .addCallback(CALLBACK)
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }

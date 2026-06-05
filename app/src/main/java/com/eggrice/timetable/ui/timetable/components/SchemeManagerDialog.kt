@@ -36,6 +36,7 @@ fun SchemeManagerDialog(
     var showRenameDialog by remember { mutableStateOf<SchemeEntity?>(null) }
     var showDeleteConfirm by remember { mutableStateOf<SchemeEntity?>(null) }
     val isDark = LocalDarkMode.current
+    val colors = LocalEggRiceColors.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -46,7 +47,7 @@ fun SchemeManagerDialog(
             ) {
                 Text("课表管理", fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
                 IconButton(onClick = { showCreateDialog = true }) {
-                    Icon(Icons.Default.Add, "新建方案", tint = accentColor())
+                    Icon(Icons.Default.Add, "新建方案", tint = colors.accentMain)
                 }
             }
         },
@@ -58,9 +59,9 @@ fun SchemeManagerDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Outlined.FolderOpen, null, tint = TextTertiary.copy(alpha = 0.3f), modifier = Modifier.size(48.dp))
+                            Icon(Icons.Outlined.FolderOpen, null, tint = colors.textTertiary.copy(alpha = 0.3f), modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text("暂无方案", color = TextTertiary, fontSize = 13.sp)
+                            Text("暂无方案", color = colors.textTertiary, fontSize = 13.sp)
                         }
                     }
                 } else {
@@ -74,8 +75,8 @@ fun SchemeManagerDialog(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(
-                                        if (isActive) accentColor().copy(alpha = if (isDark) 0.18f else 0.10f)
-                                        else if (isDark) DarkSurfaceCard else SurfaceCard
+                                        if (isActive) colors.accentMain.copy(alpha = if (isDark) 0.18f else 0.10f)
+                                        else colors.surfaceCard
                                     )
                                     .clickable { onSwitchScheme(scheme) }
                                     .padding(horizontal = 12.dp, vertical = 12.dp),
@@ -84,7 +85,7 @@ fun SchemeManagerDialog(
                                 Icon(
                                     if (isActive) Icons.Outlined.CheckCircle else Icons.Outlined.Circle,
                                     null,
-                                    tint = if (isActive) accentColor() else if (isDark) BorderDark else IconTertiary,
+                                    tint = if (isActive) colors.accentMain else colors.textTertiary,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(Modifier.width(10.dp))
@@ -93,7 +94,7 @@ fun SchemeManagerDialog(
                                         scheme.name,
                                         fontSize = 14.sp,
                                         fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isDark) DarkTextPrimary else TextPrimary
+                                        color = colors.textPrimary
                                     )
                                 }
                                 IconButton(
@@ -102,7 +103,7 @@ fun SchemeManagerDialog(
                                 ) {
                                     Icon(
                                         Icons.Outlined.Edit, "重命名",
-                                        tint = if (isDark) DarkTextTertiary else TextTertiary,
+                                        tint = colors.textTertiary,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -113,7 +114,7 @@ fun SchemeManagerDialog(
                                     ) {
                                         Icon(
                                             Icons.Outlined.Delete, "删除",
-                                            tint = DangerColor,
+                                            tint = colors.danger,
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
@@ -126,7 +127,7 @@ fun SchemeManagerDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("完成", fontWeight = FontWeight.Bold, color = accentColor()) }
+            TextButton(onClick = onDismiss) { Text("完成", fontWeight = FontWeight.Bold, color = colors.accentMain) }
         }
     )
 
@@ -186,6 +187,7 @@ private fun SchemeEditDialog(
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
+    val colors = LocalEggRiceColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title, fontWeight = FontWeight.Bold) },
@@ -197,8 +199,8 @@ private fun SchemeEditDialog(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = accentColor(),
-                    cursorColor = accentColor()
+                    focusedBorderColor = colors.accentMain,
+                    cursorColor = colors.accentMain
                 )
             )
         },
@@ -206,7 +208,7 @@ private fun SchemeEditDialog(
             Button(
                 onClick = { if (name.isNotBlank()) onConfirm(name.trim()) },
                 enabled = name.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain)
             ) { Text("确定") }
         },
         dismissButton = {
