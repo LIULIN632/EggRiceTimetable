@@ -3,6 +3,7 @@ package com.eggrice.timetable.ui.profile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,12 +29,14 @@ fun GeneralSettingsScreen(
     vibrationMode: Int,
     colorTheme: String,
     borderStyle: Int,
+    skin: String,
     onBack: () -> Unit,
     onDarkMode: () -> Unit,
     onVibrationMode: () -> Unit,
     onColorTheme: () -> Unit,
     onFeatureToggles: () -> Unit,
     onImportToCalendar: () -> Unit,
+    onSkin: () -> Unit,
     onBorderStyle: (Int) -> Unit
 ) {
     val colors = LocalEggRiceColors.current
@@ -41,6 +44,7 @@ fun GeneralSettingsScreen(
     val vibrationLabels = listOf("关闭", "轻柔", "适中", "强力")
     val vibrationLabel = vibrationLabels.getOrElse(vibrationMode) { "轻柔" }
     val themeLabel = ThemeType.fromKey(colorTheme).label
+    val skinLabel = when (skin) { "fried_rice" -> "蛋炒饭 🍳"; else -> "旺财 🐶" }
 
     Scaffold(
         topBar = {
@@ -72,6 +76,12 @@ fun GeneralSettingsScreen(
                 title = "配色主题",
                 subtitle = themeLabel,
                 onClick = onColorTheme
+            )
+            SettingsMenuItem(
+                icon = Icons.Outlined.Pets,
+                title = "主题皮肤",
+                subtitle = skinLabel,
+                onClick = onSkin
             )
             // 方格边框设置（实线/虚线/无）
             Surface(
@@ -227,5 +237,154 @@ private fun FeatureToggleItem(
                 uncheckedTrackColor = colors.borderDivider
             )
         )
+    }
+}
+
+// ═══ 主题皮肤设置页 ═══
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SkinSettingsScreen(
+    skin: String,
+    onSelectSkin: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    val colors = LocalEggRiceColors.current
+    val isDark = LocalDarkMode.current
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("主题皮肤", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surfaceCard)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(colors.surfaceAlt)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "选择一套主题皮肤，一键切换配色与默认宠物",
+                fontSize = 13.sp,
+                color = colors.textTertiary,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            // 旺财皮肤
+            SkinDetailCard(
+                emoji = "🐶",
+                name = "旺财",
+                desc = "海盐蓝 · 清新治愈",
+                petName = "默认宠物：旺财",
+                isSelected = skin == "wangcai",
+                accentColor = if (isDark) Color(0xFF6AA8FF) else Color(0xFF4D8DFF),
+                previewColors = listOf(Color(0xFF4D8DFF), Color(0xFFEAF4FF), Color(0xFFF8FAFC)),
+                onClick = { onSelectSkin("wangcai") }
+            )
+
+            // 蛋炒饭皮肤
+            SkinDetailCard(
+                emoji = "🍳",
+                name = "蛋炒饭",
+                desc = "金黄琥珀 · 温暖治愈",
+                petName = "默认宠物：煎蛋",
+                isSelected = skin == "fried_rice",
+                accentColor = if (isDark) Color(0xFFF5B840) else Color(0xFFF0A030),
+                previewColors = listOf(Color(0xFFF0A030), Color(0xFFFFF0D0), Color(0xFFFFFDF5)),
+                onClick = { onSelectSkin("fried_rice") }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SkinDetailCard(
+    emoji: String,
+    name: String,
+    desc: String,
+    petName: String,
+    isSelected: Boolean,
+    accentColor: Color,
+    previewColors: List<Color>,
+    onClick: () -> Unit
+) {
+    val colors = LocalEggRiceColors.current
+
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceCard),
+        border = if (isSelected) {
+            androidx.compose.foundation.BorderStroke(2.dp, accentColor)
+        } else null,
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 2.dp else 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(emoji, fontSize = 40.sp)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        name,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        desc,
+                        fontSize = 13.sp,
+                        color = colors.textSecondary
+                    )
+                }
+                if (isSelected) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = accentColor
+                    ) {
+                        Text(
+                            "当前",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                petName,
+                fontSize = 12.sp,
+                color = colors.textTertiary
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            // Color preview dots
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                previewColors.forEach { c ->
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(c)
+                    )
+                }
+            }
+        }
     }
 }

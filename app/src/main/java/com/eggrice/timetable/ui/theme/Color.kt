@@ -3,10 +3,11 @@ package com.eggrice.timetable.ui.theme
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 
-// ═══ 海盐蓝主色 (椒盐音乐风格) ═══
-val Accent = Color(0xFF6B95CF)
-val AccentLight = Color(0xFF8AB4F8)
-val AccentSoft = Color(0xFFE3F2FD)
+// ═══ 海盐蓝主色 (PRD V2: #4D8DFF) ═══
+val Accent = Color(0xFF4D8DFF)
+val AccentLight = Color(0xFF6AA8FF)
+val AccentSoft = Color(0xFFEAF4FF)
+val AccentPinkBg = Color(0xFFFFE4EC) // 浅粉背景（提醒卡）
 
 // ═══ 抹茶绿 ═══
 val AccentGreen = Color(0xFF7CB342)
@@ -23,73 +24,96 @@ val PurpleAccent = Color(0xFF9575CD)
 val PurpleAccentLight = Color(0xFFB39DDB)
 val PurpleSoft = Color(0xFFEDE7F6)
 
-// ═══ 炒饭黄 ═══
-val FriedAccent = Color(0xFFF6C84C)
-val FriedAccentLight = Color(0xFFFFD95A)
-val FriedAccentSoft = Color(0xFFFFF5D6)
-val DarkFriedAccentSoft = Color(0xFF3A3028)
+// ═══ 炒饭黄 (V2 蛋炒饭 — 金黄琥珀) ═══
+val FriedAccent = Color(0xFFF0A030)
+val FriedAccentLight = Color(0xFFF5B840)
+val FriedAccentSoft = Color(0xFFFFF0D0)
+val DarkFriedAccentSoft = Color(0xFF3A3020)
+
+// ═══ 马卡龙蓝 (Figma: cool lavender-white BG, cobalt blue accent) ═══
+val MacaronBlueAccent = Color(0xFF5594E8)
+val MacaronBlueAccentLight = Color(0xFF8AB4F8)
+val MacaronBlueAccentSoft = Color(0xFFE8F0FB)
+val MacaronBlueSecondary = Color(0xFFFFB3BA)
+val MacaronBlueSecondaryLight = Color(0xFFFFCDD2)
+val MacaronBlueSecondarySoft = Color(0xFFFFF0F3)
+val MacaronBlueAccentDark = Color(0xFF8AB4F8)
+
+// ═══ 马卡龙粉 (Figma: pink-tinted white BG, coral pink accent) ═══
+val MacaronPinkAccent = Color(0xFFF97C9E)
+val MacaronPinkAccentLight = Color(0xFFFFB3BA)
+val MacaronPinkAccentSoft = Color(0xFFFDECEF)
+val MacaronPinkSecondary = Color(0xFF5F9DE3)
+val MacaronPinkSecondaryLight = Color(0xFFA8C8F0)
+val MacaronPinkSecondarySoft = Color(0xFFE4EEFD)
 
 // ═══ Theme-aware accent providers ═══
 
 @Composable
 fun accentColor(): Color = when (LocalThemeType.current) {
-    ThemeType.SEA_BLUE -> Color(0xFF6B95CF)
+    ThemeType.SEA_BLUE -> Accent
     ThemeType.MATCHA_GREEN -> AccentGreen
     ThemeType.CHERRY_PINK -> PinkAccent
     ThemeType.WISTERIA_PURPLE -> PurpleAccent
     ThemeType.FRIED_RICE_YELLOW -> FriedAccent
+    ThemeType.MACARON_BLUE -> MacaronBlueAccent
+    ThemeType.MACARON_PINK -> MacaronPinkAccent
 }
 
 @Composable
 fun accentLightColor(): Color = when (LocalThemeType.current) {
-    ThemeType.SEA_BLUE -> Color(0xFF8AB4F8)
+    ThemeType.SEA_BLUE -> AccentLight
     ThemeType.MATCHA_GREEN -> AccentGreenLight
     ThemeType.CHERRY_PINK -> PinkAccentLight
     ThemeType.WISTERIA_PURPLE -> PurpleAccentLight
     ThemeType.FRIED_RICE_YELLOW -> FriedAccentLight
+    ThemeType.MACARON_BLUE -> MacaronBlueAccentLight
+    ThemeType.MACARON_PINK -> MacaronPinkAccentLight
 }
 
 @Composable
 fun accentSoftColor(): Color = when (LocalThemeType.current) {
-    ThemeType.SEA_BLUE -> Color(0xFFE3F2FD)
+    ThemeType.SEA_BLUE -> AccentSoft
     ThemeType.MATCHA_GREEN -> AccentGreenSoft
     ThemeType.CHERRY_PINK -> PinkSoft
     ThemeType.WISTERIA_PURPLE -> PurpleSoft
     ThemeType.FRIED_RICE_YELLOW -> FriedAccentSoft
+    ThemeType.MACARON_BLUE -> MacaronBlueAccentSoft
+    ThemeType.MACARON_PINK -> MacaronPinkAccentSoft
 }
 
 // ═══ 辅助暖色 ═══
 val OrangeAccent = Color(0xFFF7B787)
 val OrangeSoft = Color(0xFFFFF4EB)
 
-// ═══ Light theme neutral ═══
-val Surface = Color(0xFFFAFAFA)
+// ═══ Light theme neutral (PRD V2) ═══
+val Surface = Color(0xFFF8FAFC)
 val SurfaceCard = Color(0xFFFFFFFF)
 val SurfaceAlt = Color(0xFFF5F5F5)
 val CardBorder = Color(0xFFE0E0E0)
 val Divider = Color(0xFFEEEEEE)
-val TodayBg = Color(0xFFE8F0FE)
+val TodayBg = Color(0xFFEAF4FF)
 
-val TextPrimary = Color(0xFF212121)
-val TextSecondary = Color(0xFF424242)
-val TextTertiary = Color(0xFF757575)
+val TextPrimary = Color(0xFF1F2937)
+val TextSecondary = Color(0xFF8B95A7)
+val TextTertiary = Color(0xFF9CA3AF)
 
-val StatusBar = Color(0xFFFAFAFA)
+val StatusBar = Color(0xFFF8FAFC)
 
-// ═══ Dark theme neutral ═══
-val DarkSurface = Color(0xFF1A1C1E)
-val DarkSurfaceAlt = Color(0xFF212325)
-val DarkSurfaceCard = Color(0xFF2A2C2E)
-val DarkCardBorder = Color(0xFF383A3C)
-val DarkDivider = Color(0xFF303234)
-val DarkTodayBg = Color(0xFF1E2838)
-val DarkAccentSoft = Color(0xFF1C2538)
+// ═══ Dark theme neutral (PRD V2) ═══
+val DarkSurface = Color(0xFF121212)
+val DarkSurfaceAlt = Color(0xFF1A1A1A)
+val DarkSurfaceCard = Color(0xFF1E1E1E)
+val DarkCardBorder = Color(0xFF2B2B2B)
+val DarkDivider = Color(0xFF2B2B2B)
+val DarkTodayBg = Color(0xFF1A2A4A)
+val DarkAccentSoft = Color(0xFF1A2A4A)
 
 val DarkTextPrimary = Color(0xFFE8E8E8)
 val DarkTextSecondary = Color(0xFF9E9E9E)
 val DarkTextTertiary = Color(0xFF757575)
 
-val DarkStatusBar = Color(0xFF1A1C1E)
+val DarkStatusBar = Color(0xFF121212)
 
 // ═══ Semantic colors ═══
 val DangerColor = Color(0xFFE57373)

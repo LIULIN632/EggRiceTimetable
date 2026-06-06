@@ -5,8 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Assignment
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -33,7 +34,6 @@ fun WeekHeader(
     val todayDay = today.dayOfWeek.value
     val colors = LocalEggRiceColors.current
 
-    // 计算本周周一日期
     val weekMonday = if (semesterStart.isNotBlank()) {
         try {
             val parts = semesterStart.split("-")
@@ -51,29 +51,19 @@ fun WeekHeader(
             .fillMaxWidth()
             .background(colors.surfaceCard)
             .padding(horizontal = 4.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Homework button — 32.dp wide to align with grid sidebar
-        Column(
-            modifier = Modifier
-                .width(32.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .clickable { onHomeworkClick() }
-                .padding(vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        // Homework button
+        IconButton(
+            onClick = onHomeworkClick,
+            modifier = Modifier.size(32.dp)
         ) {
             Icon(
-                Icons.Outlined.Assignment,
+                Icons.AutoMirrored.Filled.Assignment,
                 contentDescription = "作业",
-                tint = colors.accentMain,
-                modifier = Modifier.size(20.dp)
-            )
-            Text(
-                text = "作业",
-                fontSize = 8.sp,
-                color = colors.accentMain,
-                fontWeight = FontWeight.Medium
+                tint = colors.textTertiary,
+                modifier = Modifier.size(18.dp)
             )
         }
 
@@ -82,20 +72,15 @@ fun WeekHeader(
             val isToday = isCurrentWeek && dayNum == todayDay
             val date = weekMonday.plusDays(index.toLong())
 
-            val (bgColor, textColor, dayTextColor) = when {
-                isToday && isCurrentWeek -> Triple(colors.accentMain, Color.White, Color.White)
-                isToday && !isCurrentWeek -> Triple(colors.surfaceHighlight, colors.accentMain, colors.accentMain)
-                else -> Triple(
-                    Color.Transparent,
-                    colors.textPrimary,
-                    colors.textTertiary
-                )
+            val (bgColor, textColor) = when {
+                isToday -> Pair(colors.accentMain, Color.White)
+                else -> Pair(Color.Transparent, colors.textPrimary)
             }
 
             Column(
                 modifier = Modifier
-                    .width(42.dp)
-                    .clip(RoundedCornerShape(21.dp))
+                    .weight(1f)
+                    .clip(RoundedCornerShape(24.dp))
                     .background(bgColor)
                     .clickable { onDayClick(dayNum) }
                     .padding(vertical = 6.dp),
@@ -103,17 +88,17 @@ fun WeekHeader(
             ) {
                 Text(
                     text = dayLabel,
-                    color = dayTextColor,
-                    fontSize = 10.sp,
-                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isToday) textColor.copy(alpha = 0.85f) else colors.textTertiary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = date.dayOfMonth.toString(),
                     color = textColor,
-                    fontSize = 13.sp,
-                    fontWeight = if (isToday) FontWeight.ExtraBold else FontWeight.Medium,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center
                 )
             }

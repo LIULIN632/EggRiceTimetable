@@ -16,12 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.eggrice.timetable.TimetableApplication
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.entity.SchemeEntity
@@ -78,6 +75,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showTreasureBoxDialog by remember { mutableStateOf(false) }
     var showSchemeManager by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
+    var showSkinSettings by remember { mutableStateOf(false) }
 
     // ── Settings sub-page states ──
     var showSettingsMain by remember { mutableStateOf(false) }
@@ -89,6 +87,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     val hasSubPage = showImportScreen || showWebImportScreen || showTreasureBoxDialog
             || showSettingsMain || showTimeSlotManagement || showSemesterSettings || showChangelog
             || showFeatureToggles || showGeneralSettings || showAppearanceDialog
+            || showSkinSettings
             || showImportMenu || showJwImportSub || showFileImportSub || showShareMenu
 
     LaunchedEffect(hasSubPage) { onSubPageChange(hasSubPage) }
@@ -107,6 +106,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             showFeatureToggles -> showFeatureToggles = false
             showGeneralSettings -> showGeneralSettings = false
             showAppearanceDialog -> showAppearanceDialog = false
+            showSkinSettings -> showSkinSettings = false
             // Sub-dialogs → back to ImportMenu
             showJwImportSub -> { showJwImportSub = false; showImportMenu = true }
             showFileImportSub -> { showFileImportSub = false; showImportMenu = true }
@@ -204,10 +204,12 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     val gridBgColor by container.gridBgColor.collectAsState()
     val otherWeekAlpha by container.otherWeekAlpha.collectAsState()
     val wallpaperUri by container.wallpaperUri.collectAsState()
+    val skin by container.skin.collectAsState()
     val showTreasureBox by container.showTreasureBox.collectAsState()
     val showWidget by container.showWidget.collectAsState()
     val allSchemes by app.repository.allSchemes.collectAsState(emptyList())
     val activeSchemeId by container.activeSchemeId.collectAsState()
+    val allTasks by app.repository.getTasksByScheme(activeSchemeId).collectAsState(emptyList())
 
     val colors = LocalEggRiceColors.current
 
@@ -340,6 +342,8 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             onColorTheme = { showGeneralSettings = false; showColorThemeDialog = true },
             onFeatureToggles = { showGeneralSettings = false; showFeatureToggles = true },
             onImportToCalendar = onImportToCalendar,
+            onSkin = { showGeneralSettings = false; showSkinSettings = true },
+            skin = skin,
             onBorderStyle = { container.setBorderStyle(it) }
         )
         return
@@ -352,6 +356,14 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             reminderEnabled = reminderEnabled,
             autoUpdate = autoUpdate,
             onBack = { showFeatureToggles = false }
+        )
+        return
+    }
+    if (showSkinSettings) {
+        SkinSettingsScreen(
+            skin = skin,
+            onSelectSkin = { container.setSkin(it) },
+            onBack = { showSkinSettings = false }
         )
         return
     }
@@ -386,77 +398,41 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
-            // ━━━━ User profile area ━━━━
+            // ━━━━ V2: PetCard (combines profile + pet) ━━━━
             item {
-                UserProfileArea(
+                PetCard(
                     nickname = nickname,
                     school = school,
-                    onEditNickname = { showNicknameDialog = true }
+                    petIndex = petIndex,
+                    petName = petName,
+                    onEditNickname = { showNicknameDialog = true },
+                    onPetClick = { showPetDialog = true }
+                )
+            }
+
+            // ━━━━ V2: ReminderCard ━━━━
+            item {
+                ReminderCard(
+                    unfinishedCount = allTasks.count { !it.completed },
+                    onGoComplete = {
+                        Toast.makeText(context, "请切换到课程页查看待办事项", Toast.LENGTH_SHORT).show()
+                    }
                 )
             }
 
             item { SpacerH(6) }
 
-            // ━━━━ Pet area ━━━━
+            // ━━━━ V2: QuickActionGrid 2×2 ━━━━
             item {
-                PetArea(
-                    petIndex = petIndex,
-                    petName = petName,
-                    onClick = { showPetDialog = true }
+                QuickActionGrid(
+                    onImport = { showImportMenu = true },
+                    onShare = { showShareMenu = true },
+                    onScheduleSettings = { showSettingsMain = true },
+                    onGeneralSettings = { showGeneralSettings = true }
                 )
             }
 
             item { SpacerH(12) }
-
-            // ━━━━ Row 1: 导入 + 分享 ━━━━
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    DualButton(
-                        text = "导入",
-                        icon = Icons.Outlined.FileDownload,
-                        modifier = Modifier.weight(1f),
-                        onClick = { showImportMenu = true },
-                        containerColor = PinkSoft,
-                        contentColor = PinkAccent
-                    )
-                    DualButton(
-                        text = "分享",
-                        icon = Icons.Outlined.Share,
-                        modifier = Modifier.weight(1f),
-                        onClick = { showShareMenu = true }
-                    )
-                }
-            }
-
-            item { SpacerH(12) }
-
-            // ━━━━ Row 2: 课表设置 + 通用设置 ━━━━
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    DualButton(
-                        text = "课表设置",
-                        icon = Icons.Outlined.GridView,
-                        modifier = Modifier.weight(1f),
-                        onClick = { showSettingsMain = true }
-                    )
-                    DualButton(
-                        text = "通用设置",
-                        icon = Icons.Outlined.Settings,
-                        modifier = Modifier.weight(1f),
-                        onClick = { showGeneralSettings = true },
-                        containerColor = PinkSoft,
-                        contentColor = PinkAccent
-                    )
-                }
-            }
-
-            item { SpacerH(16) }
 
             // ━━━━ Bottom area ━━━━
             item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = Divider) }
@@ -568,7 +544,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     if (showColorThemeDialog) {
         OptionsDialog(
             title = "课程配色主题",
-            options = listOf("海盐蓝" to "default", "抹茶绿" to "matcha", "樱花粉" to "sakura", "紫藤紫" to "wisteria", "蛋炒饭" to "fried_rice"),
+            options = listOf("海盐蓝" to "default", "马卡龙蓝" to "macaron_blue", "马卡龙粉" to "macaron_pink", "抹茶绿" to "matcha", "樱花粉" to "sakura", "紫藤紫" to "wisteria", "蛋炒饭" to "fried_rice"),
             selected = colorTheme,
             onSelect = { container.setColorTheme(it) },
             onDismiss = { showColorThemeDialog = false }

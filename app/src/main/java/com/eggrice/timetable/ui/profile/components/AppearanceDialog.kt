@@ -51,7 +51,7 @@ internal fun AppearanceDialog(
     var previewCampus by remember { mutableStateOf(showCampus) }
     var previewSlotTime by remember { mutableStateOf(showSlotTime) }
     var previewBorderStyle by remember { mutableIntStateOf(borderStyle) }
-    var previewCentered by remember { mutableStateOf(textCentered) }
+    var previewCentered by remember(textCentered) { mutableStateOf(textCentered) }
     var previewHeight by remember { mutableIntStateOf(gridHeight) }
     var previewRadius by remember { mutableIntStateOf(savedCornerRadius) }
     var previewOpacity by remember { mutableStateOf(gridOpacity) }
@@ -70,7 +70,7 @@ internal fun AppearanceDialog(
         if (previewCampus != showCampus) container.toggleShowCampus()
         if (previewSlotTime != showSlotTime) container.toggleShowSlotTime()
         if (previewBorderStyle != borderStyle) container.setBorderStyle(previewBorderStyle)
-        if (previewCentered != textCentered) container.toggleTextCentered()
+        if (previewCentered != textCentered) container.setTextCentered(previewCentered)
         if (previewNonCurrentWeek != showNonCurrentWeek) container.toggleShowNonCurrentWeek()
         if (previewOddEven != showOddEven) container.toggleShowOddEven()
         if (previewColorTheme != colorTheme) container.setColorTheme(previewColorTheme)
@@ -184,7 +184,7 @@ internal fun AppearanceDialog(
                 Text("配色主题", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
                 Surface(shape = RoundedCornerShape(12.dp), color = colors.surfaceCard) {
                     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("海盐蓝" to "default", "抹茶绿" to "matcha", "樱花粉" to "sakura", "紫藤紫" to "wisteria", "蛋炒饭" to "fried_rice").forEach { (label, theme) ->
+                        listOf("海盐蓝" to "default", "马卡龙蓝" to "macaron_blue", "马卡龙粉" to "macaron_pink", "抹茶绿" to "matcha", "樱花粉" to "sakura", "紫藤紫" to "wisteria", "蛋炒饭" to "fried_rice").forEach { (label, theme) ->
                             FilterChip(selected = previewColorTheme == theme, onClick = { previewColorTheme = theme }, label = { Text(label, fontSize = 12.sp) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.accentMain, selectedLabelColor = Color.White))
                         }
                     }

@@ -13,6 +13,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -47,6 +49,9 @@ import com.eggrice.timetable.ui.timetable.components.WeekHeader
 import com.eggrice.timetable.ui.timetable.components.HomeworkListDialog
 import com.eggrice.timetable.ui.timetable.components.AddHomeworkDialog
 import com.eggrice.timetable.ui.profile.SemesterSettingsPage
+import com.eggrice.timetable.ui.components.TimetableEmptyState
+import com.eggrice.timetable.ui.components.PetBubble
+import com.eggrice.timetable.ui.components.rememberPetBubbleState
 import com.eggrice.timetable.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -134,12 +139,16 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     // Homework state
     val schemeId by container.activeSchemeId.collectAsState()
     val allHomework by app.repository.getAllHomework().collectAsState(initial = emptyList())
+    val allTasks by app.repository.getTasksByScheme(schemeId).collectAsState(initial = emptyList())
     val filteredHomework = remember(allHomework, schemeId) {
         allHomework.filter { it.schemeId == schemeId || it.schemeId == 0L }
     }
     var showHomeworkList by remember { mutableStateOf(false) }
     var showAddHomework by remember { mutableStateOf(false) }
     var showSemesterSettings by remember { mutableStateOf(false) }
+
+    val pendingTasks = remember(allTasks) { allTasks.filter { !it.completed } }
+    val pendingCount = pendingTasks.size
 
     // Hide bottom nav + handle system back when semester settings is open
     LaunchedEffect(showSemesterSettings) { onSubPageChange(showSemesterSettings) }
@@ -167,44 +176,85 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
 
     val hasWallpaper = wallpaperBitmap != null
 
+    // ── Pet bubble state & message ──
+    val petBubbleState = rememberPetBubbleState()
+
+    val petMessage = remember(todayDay, allTasks, filteredCourses, timeSlots) {
+        val unfinishedCount = allTasks.count { !it.completed }
+        val todayCourses = filteredCourses.filter { it.dayOfWeek == todayDay }
+
+        when {
+            todayDay in 6..7 -> "终于放假啦！"
+            unfinishedCount > 0 -> "汪！你还有${unfinishedCount}项没完成～"
+            todayCourses.isEmpty() -> null
+            else -> {
+                val now = LocalDate.now()
+                val nowMinutes = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+                val upcoming = todayCourses.minByOrNull { course ->
+                    val slot = timeSlots.find { it.slot == course.startSlot }
+                    val startMin = slot?.startTime?.let { t ->
+                        val parts = t.split(":")
+                        parts[0].toInt() * 60 + parts[1].toInt()
+                    } ?: Int.MAX_VALUE
+                    if (startMin >= nowMinutes) startMin else Int.MAX_VALUE
+                }
+                if (upcoming != null) {
+                    val slot = timeSlots.find { it.slot == upcoming.startSlot }
+                    val startMin = slot?.startTime?.let { t ->
+                        val parts = t.split(":")
+                        parts[0].toInt() * 60 + parts[1].toInt()
+                    } ?: Int.MAX_VALUE
+                    val diff = startMin - nowMinutes
+                    if (diff in 1..15) "还有${diff}分钟上课啦"
+                    else if (nowMinutes > startMin) "今天辛苦啦～"
+                    else null
+                } else "今天辛苦啦～"
+            }
+        }
+    }
+
+    // Messages that vary each click — casual reminders
+    val casualMessages = remember {
+        listOf(
+            "记得多喝水哦～",
+            "休息一下，看看远处吧",
+            "今天也要加油！",
+            "准备上课啦～",
+            "汪！摸摸头～",
+            "吃饭要吃饱哦！",
+            "天冷了记得加衣服～",
+            "你是最棒的！"
+        )
+    }
+
+    val petClickMessage = remember(todayDay, pendingCount, filteredCourses) {
+        val todayCourses = filteredCourses.filter { it.dayOfWeek == todayDay }
+        when {
+            pendingCount > 0 -> "汪！你还有${pendingCount}项没完成～"
+            todayDay in 6..7 -> "周末也要记得休息哦～"
+            todayCourses.isEmpty() -> casualMessages.random()
+            else -> casualMessages.random()
+        }
+    }
+
+    LaunchedEffect(petMessage) {
+        petMessage?.let { petBubbleState.show(it, scope) }
+    }
+
     Scaffold(
         containerColor = if (hasWallpaper) Color.Transparent else colors.surfaceBase,
         floatingActionButton = {
-            // FAB press animation per MD spec
-            var fabPressed by remember { mutableStateOf(false) }
-            val fabScale by animateFloatAsState(
-                targetValue = if (fabPressed) 0.92f else 1f,
-                animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f)
-            )
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                if (!isCurrentWeek) {
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            fabPressed = true
-                            viewModel.goToToday()
-                            fabPressed = false
-                        },
-                        icon = { Icon(Icons.Outlined.CalendarMonth, null, modifier = Modifier.size(20.dp)) },
-                        text = { Text("回本周", fontSize = 13.sp, fontWeight = FontWeight.Bold) },
-                        containerColor = colors.accentMain,
-                        contentColor = Color.White,
-                        elevation = FloatingActionButtonDefaults.elevation(
-                            defaultElevation = 6.dp,
-                            pressedElevation = 12.dp
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.height(40.dp).scale(fabScale)
-                    )
-                    Spacer(Modifier.height(12.dp))
-                }
+            Column(horizontalAlignment = Alignment.End) {
+                PetBubble(
+                    message = petBubbleState.message ?: "",
+                    visible = petBubbleState.message != null,
+                    modifier = Modifier.padding(end = 8.dp, bottom = 4.dp)
+                )
                 PetFAB(
                     petEmoji = petEmoji(petIndexState),
-                    onClick = {
-                        fabPressed = true
-                        viewModel.goToToday()
-                        fabPressed = false
-                    }
+                    badgeCount = pendingCount,
+                    onClick = { petBubbleState.show(petClickMessage, scope) },
+                    onLongClick = { viewModel.goToToday() }
                 )
             }
         }
@@ -247,13 +297,14 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                 ) {
                     Text(
                         "第${currentWeek}周",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = colors.textPrimary
                     )
                     Text(
                         "${startOfWeek.format(fmt)} - ${endOfWeek.format(fmt)}",
-                        fontSize = 9.sp,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Normal,
                         color = colors.textTertiary
                     )
                 }
@@ -294,35 +345,44 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                     .background(colors.borderDivider)
             )
 
-            // ── Course grid ──
-            PeriodGrid(
-                timeSlots = timeSlots,
-                courses = filteredCourses,
-                currentWeek = currentWeek,
-                isCurrentWeek = isCurrentWeek,
-                showTeacher = showTeacher,
-                showRoom = showRoom,
-                showCampus = showCampus,
-                showSlotTime = showSlotTime,
-                showDashedBorder = showDashedBorder,
-                textCentered = textCentered,
-                gridHeightProvider = { container.gridHeight.value },
-                cornerRadius = cornerRadius,
-                gridOpacityProvider = { container.gridOpacity.value },
-                gridTextSize = gridTextSize,
-                showOddEven = showOddEven,
-                borderStyle = borderStyle,
-                nonCurrentCourses = nonCurrentWeekCourses,
-                showNonCurrentWeek = showNonCurrentWeek,
-                vibrationMode = vibrationMode,
-                gridBgColor = gridBgColor,
-                otherWeekAlpha = otherWeekAlpha,
-                homeworkCourseNames = homeworkCourseNames.toSet(),
-                onCourseClick = { viewModel.openEditEditor(it) },
-                onEmptyCellClick = { day, slot -> viewModel.openAddEditor(day, slot) },
-                onCourseMoved = { course, newDay, newSlot -> viewModel.updateCoursePosition(course, newDay, newSlot) },
-                modifier = Modifier.fillMaxWidth().weight(1f)
-            )
+            // ── Course grid area ──
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                if (courses.isEmpty()) {
+                    TimetableEmptyState(
+                        onAddCourse = { viewModel.openAddEditor() }
+                    )
+                } else {
+                    PeriodGrid(
+                        timeSlots = timeSlots,
+                        courses = filteredCourses,
+                        currentWeek = currentWeek,
+                        isCurrentWeek = isCurrentWeek,
+                        showTeacher = showTeacher,
+                        showRoom = showRoom,
+                        showCampus = showCampus,
+                        showSlotTime = showSlotTime,
+                        showDashedBorder = showDashedBorder,
+                        textCentered = textCentered,
+                        gridHeightProvider = { container.gridHeight.value },
+                        cornerRadius = cornerRadius,
+                        gridOpacityProvider = { container.gridOpacity.value },
+                        gridTextSize = gridTextSize,
+                        showOddEven = showOddEven,
+                        borderStyle = borderStyle,
+                        nonCurrentCourses = nonCurrentWeekCourses,
+                        showNonCurrentWeek = showNonCurrentWeek,
+                        vibrationMode = vibrationMode,
+                        gridBgColor = gridBgColor,
+                        otherWeekAlpha = otherWeekAlpha,
+                        homeworkCourseNames = homeworkCourseNames.toSet(),
+                        onCourseClick = { viewModel.openEditEditor(it) },
+                        onEmptyCellClick = { day, slot -> viewModel.openAddEditor(day, slot) },
+                        onCourseMoved = { course, newDay, newSlot -> viewModel.updateCoursePosition(course, newDay, newSlot) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+            }
             }
         }
     }

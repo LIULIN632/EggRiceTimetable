@@ -70,7 +70,7 @@ internal fun AppearanceScreen(
     var previewCampus by remember { mutableStateOf(showCampus) }
     var previewSlotTime by remember { mutableStateOf(showSlotTime) }
     var previewBorderStyle by remember { mutableIntStateOf(borderStyle) }
-    var previewCentered by remember { mutableStateOf(textCentered) }
+    var previewCentered by remember(textCentered) { mutableStateOf(textCentered) }
     var previewHeight by remember { mutableIntStateOf(gridHeight) }
     var previewRadius by remember { mutableIntStateOf(savedCornerRadius) }
     var previewOpacity by remember { mutableStateOf(gridOpacity) }
@@ -91,7 +91,7 @@ internal fun AppearanceScreen(
         if (previewCampus != showCampus) container.toggleShowCampus()
         if (previewSlotTime != showSlotTime) container.toggleShowSlotTime()
         if (previewBorderStyle != borderStyle) container.setBorderStyle(previewBorderStyle)
-        if (previewCentered != textCentered) container.toggleTextCentered()
+        if (previewCentered != textCentered) container.setTextCentered(previewCentered)
         if (previewNonCurrentWeek != showNonCurrentWeek) container.toggleShowNonCurrentWeek()
         if (previewOddEven != showOddEven) container.toggleShowOddEven()
         container.setGridHeight(previewHeight)

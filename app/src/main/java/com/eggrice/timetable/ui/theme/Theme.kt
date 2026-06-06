@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.sp
 // ═══ 五套主题枚举 ═══
 enum class ThemeType(val key: String, val label: String) {
     SEA_BLUE("default", "海盐蓝"),
+    MACARON_BLUE("macaron_blue", "马卡龙蓝"),
+    MACARON_PINK("macaron_pink", "马卡龙粉"),
     MATCHA_GREEN("matcha", "抹茶绿"),
     CHERRY_PINK("sakura", "樱花粉"),
     WISTERIA_PURPLE("wisteria", "紫藤紫"),
@@ -35,14 +37,14 @@ val LocalThemeType = staticCompositionLocalOf { ThemeType.SEA_BLUE }
 // ═══ Material3 颜色方案 ═══
 
 private val SeaBlueLightScheme = lightColorScheme(
-    primary = Color(0xFF6B95CF),
+    primary = Color(0xFF4D8DFF),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE3F2FD),
-    onPrimaryContainer = Color(0xFF1A365D),
-    secondary = Color(0xFF8AB4F8),
+    primaryContainer = Color(0xFFEAF4FF),
+    onPrimaryContainer = Color(0xFF1A3A6E),
+    secondary = Color(0xFF6AA8FF),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE8F0FE),
-    onSecondaryContainer = Color(0xFF1A365D),
+    secondaryContainer = Color(0xFFEAF4FF),
+    onSecondaryContainer = Color(0xFF1A3A6E),
     tertiary = PinkAccent,
     onTertiary = Color.White,
     tertiaryContainer = PinkSoft,
@@ -105,15 +107,69 @@ private val FriedRiceLightScheme = SeaBlueLightScheme.copy(
     onSecondaryContainer = Color(0xFF1A3A28)
 )
 
+private val MacaronBlueLightScheme = lightColorScheme(
+    primary = MacaronBlueAccent,
+    onPrimary = Color.White,
+    primaryContainer = MacaronBlueAccentSoft,
+    onPrimaryContainer = Color(0xFF1A365D),
+    secondary = MacaronBlueSecondary,
+    onSecondary = Color.White,
+    secondaryContainer = MacaronBlueSecondarySoft,
+    onSecondaryContainer = Color(0xFF4A1A2E),
+    tertiary = MacaronBlueSecondary,
+    onTertiary = Color.White,
+    tertiaryContainer = MacaronBlueSecondarySoft,
+    onTertiaryContainer = Color(0xFF4A1A2E),
+    surface = Color(0xFFFEFEFE),
+    onSurface = Color(0xFF6B6B6B),
+    background = Color(0xFFF7F7FA),
+    onBackground = Color(0xFF131313),
+    surfaceVariant = Color(0xFFF1F1F5),
+    onSurfaceVariant = Color(0xFFB0B0B0),
+    outline = Color(0xFFDEDEDE),
+    outlineVariant = Color(0xFFEEEEEE),
+    error = DangerColor,
+    onError = Color.White,
+    errorContainer = Color(0xFFFFEBEE),
+    onErrorContainer = Color(0xFF4A1A1A)
+)
+
+private val MacaronPinkLightScheme = lightColorScheme(
+    primary = MacaronPinkAccent,
+    onPrimary = Color.White,
+    primaryContainer = MacaronPinkAccentSoft,
+    onPrimaryContainer = Color(0xFF4A1A2E),
+    secondary = MacaronPinkSecondary,
+    onSecondary = Color.White,
+    secondaryContainer = MacaronPinkSecondarySoft,
+    onSecondaryContainer = Color(0xFF1A365D),
+    tertiary = MacaronPinkSecondary,
+    onTertiary = Color.White,
+    tertiaryContainer = MacaronPinkSecondarySoft,
+    onTertiaryContainer = Color(0xFF1A365D),
+    surface = Color(0xFFFEFEFE),
+    onSurface = Color(0xFF6B6B6B),
+    background = Color(0xFFFEF8F9),
+    onBackground = Color(0xFF1C1918),
+    surfaceVariant = Color(0xFFFEF3F6),
+    onSurfaceVariant = Color(0xFFB0B0B0),
+    outline = Color(0xFFDADAD9),
+    outlineVariant = Color(0xFFEEEEEE),
+    error = DangerColor,
+    onError = Color.White,
+    errorContainer = Color(0xFFFFEBEE),
+    onErrorContainer = Color(0xFF4A1A1A)
+)
+
 private val SeaBlueDarkScheme = darkColorScheme(
-    primary = AccentLight,
+    primary = Color(0xFF6AA8FF),
     onPrimary = Color(0xFF1A2E4A),
-    primaryContainer = DarkAccentSoft,
+    primaryContainer = Color(0xFF1A2A4A),
     onPrimaryContainer = Color(0xFFD0DDFF),
-    secondary = AccentGreenLight,
-    onSecondary = Color(0xFF1A2E20),
-    secondaryContainer = Color(0xFF1E3A2A),
-    onSecondaryContainer = Color(0xFFD0EED8),
+    secondary = Color(0xFF6AA8FF),
+    onSecondary = Color(0xFF1A2E4A),
+    secondaryContainer = Color(0xFF1A2A4A),
+    onSecondaryContainer = Color(0xFFD0DDFF),
     tertiary = PinkAccentLight,
     onTertiary = Color(0xFF3A1A28),
     tertiaryContainer = Color(0xFF4A2A38),
@@ -176,6 +232,60 @@ private val FriedRiceDarkScheme = SeaBlueDarkScheme.copy(
     onSecondaryContainer = Color(0xFFD4F5E5)
 )
 
+private val MacaronBlueDarkScheme = darkColorScheme(
+    primary = MacaronBlueAccentLight,
+    onPrimary = Color(0xFF1A2E4A),
+    primaryContainer = Color(0xFF1E3848),
+    onPrimaryContainer = Color(0xFFD0ECFF),
+    secondary = MacaronBlueSecondaryLight,
+    onSecondary = Color(0xFF3A1A28),
+    secondaryContainer = Color(0xFF4A2838),
+    onSecondaryContainer = Color(0xFFFFD0D8),
+    tertiary = MacaronBlueSecondaryLight,
+    onTertiary = Color(0xFF3A1A28),
+    tertiaryContainer = Color(0xFF4A2838),
+    onTertiaryContainer = Color(0xFFFFD0D8),
+    surface = Color(0xFF2A2C2E),
+    onSurface = Color(0xFF9E9E9E),
+    background = Color(0xFF1A1C1E),
+    onBackground = Color(0xFFE8E8E8),
+    surfaceVariant = Color(0xFF212325),
+    onSurfaceVariant = Color(0xFF757575),
+    outline = Color(0xFF383A3C),
+    outlineVariant = Color(0xFF303234),
+    error = DangerColorDark,
+    onError = Color(0xFF2E1A1A),
+    errorContainer = Color(0xFF4A2A2A),
+    onErrorContainer = Color(0xFFFFCDD2)
+)
+
+private val MacaronPinkDarkScheme = darkColorScheme(
+    primary = MacaronPinkAccentLight,
+    onPrimary = Color(0xFF3A1A28),
+    primaryContainer = Color(0xFF4A2838),
+    onPrimaryContainer = Color(0xFFFFD0D8),
+    secondary = MacaronPinkSecondaryLight,
+    onSecondary = Color(0xFF1A2E4A),
+    secondaryContainer = Color(0xFF1E3848),
+    onSecondaryContainer = Color(0xFFD0ECFF),
+    tertiary = MacaronPinkSecondaryLight,
+    onTertiary = Color(0xFF1A2E4A),
+    tertiaryContainer = Color(0xFF1E3848),
+    onTertiaryContainer = Color(0xFFD0ECFF),
+    surface = Color(0xFF2A2C2E),
+    onSurface = Color(0xFF9E9E9E),
+    background = Color(0xFF1A1C1E),
+    onBackground = Color(0xFFE8E8E8),
+    surfaceVariant = Color(0xFF212325),
+    onSurfaceVariant = Color(0xFF757575),
+    outline = Color(0xFF383A3C),
+    outlineVariant = Color(0xFF303234),
+    error = DangerColorDark,
+    onError = Color(0xFF2E1A1A),
+    errorContainer = Color(0xFF4A2A2A),
+    onErrorContainer = Color(0xFFFFCDD2)
+)
+
 // ═══ 椒盐音乐同款无衬线极简字体 ═══
 private val AppTypography = Typography(
     displayLarge = TextStyle(
@@ -195,13 +305,13 @@ private val AppTypography = Typography(
     )
 )
 
-// ═══ 全柔和圆角 ═══
+// ═══ V2 圆角：小组件20dp / 卡片28dp / 弹窗32dp ═══
 private val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(24.dp)
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(32.dp)
 )
 
 // ═══ 主题入口 ═══
@@ -213,6 +323,8 @@ fun EggRiceTheme(
 ) {
     val lightScheme = when (themeType) {
         ThemeType.SEA_BLUE -> SeaBlueLightScheme
+        ThemeType.MACARON_BLUE -> MacaronBlueLightScheme
+        ThemeType.MACARON_PINK -> MacaronPinkLightScheme
         ThemeType.MATCHA_GREEN -> MatchaGreenLightScheme
         ThemeType.CHERRY_PINK -> CherryPinkLightScheme
         ThemeType.WISTERIA_PURPLE -> WisteriaPurpleLightScheme
@@ -221,6 +333,8 @@ fun EggRiceTheme(
 
     val darkScheme = when (themeType) {
         ThemeType.SEA_BLUE -> SeaBlueDarkScheme
+        ThemeType.MACARON_BLUE -> MacaronBlueDarkScheme
+        ThemeType.MACARON_PINK -> MacaronPinkDarkScheme
         ThemeType.MATCHA_GREEN -> MatchaGreenDarkScheme
         ThemeType.CHERRY_PINK -> CherryPinkDarkScheme
         ThemeType.WISTERIA_PURPLE -> WisteriaPurpleDarkScheme
@@ -230,11 +344,15 @@ fun EggRiceTheme(
     val colorScheme = if (darkTheme) darkScheme else lightScheme
 
     val eggRiceColors = when {
+        darkTheme && themeType == ThemeType.MACARON_BLUE -> MacaronBlueDark
+        darkTheme && themeType == ThemeType.MACARON_PINK -> MacaronPinkDark
         darkTheme && themeType == ThemeType.MATCHA_GREEN -> MatchaGreenDark
         darkTheme && themeType == ThemeType.CHERRY_PINK -> CherryPinkDark
         darkTheme && themeType == ThemeType.WISTERIA_PURPLE -> WisteriaPurpleDark
         darkTheme && themeType == ThemeType.FRIED_RICE_YELLOW -> FriedRiceYellowDark
         darkTheme -> SeaSaltBlueDark
+        themeType == ThemeType.MACARON_BLUE -> MacaronBlueLight
+        themeType == ThemeType.MACARON_PINK -> MacaronPinkLight
         themeType == ThemeType.MATCHA_GREEN -> MatchaGreenLight
         themeType == ThemeType.CHERRY_PINK -> CherryPinkLight
         themeType == ThemeType.WISTERIA_PURPLE -> WisteriaPurpleLight

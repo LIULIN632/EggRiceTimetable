@@ -189,7 +189,7 @@ fun PeriodGrid(
                                 Text(
                                     text = slot.slot.toString(),
                                     fontSize = 12.sp,
-                                    fontWeight = if (isCurrentPeriod) FontWeight.ExtraBold else FontWeight.Bold,
+                                    fontWeight = FontWeight.Normal,
                                     color = if (isCurrentPeriod) colors.accentMain
                                         else colors.textSecondary
                                 )
@@ -197,6 +197,7 @@ fun PeriodGrid(
                                     Text(
                                         text = slot.startTime,
                                         fontSize = 10.sp,
+                                        fontWeight = FontWeight.Normal,
                                         color = colors.textTertiary
                                     )
                                 }
@@ -212,7 +213,14 @@ fun PeriodGrid(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .padding(horizontal = 1.dp)
+                                    .padding(horizontal = 0.5.dp)
+                                    .drawBehind {
+                                        drawRoundRect(
+                                            color = Color(0xFFE9ECEF),
+                                            cornerRadius = CornerRadius(2.dp.toPx()),
+                                            style = Stroke(width = 0.5.dp.toPx())
+                                        )
+                                    }
                                     .then(
                                         if (isDragTarget) {
                                             val dragAccent = colors.accentMain
@@ -221,11 +229,6 @@ fun PeriodGrid(
                                                 drawRoundRect(color = dragAccent, cornerRadius = CornerRadius(4.dp.toPx()), size = size, style = Stroke(width = 2.dp.toPx()))
                                             }
                                         }
-                                        else Modifier
-                                    )
-                                    .then(
-                                        if (isCurrentPeriod)
-                                            Modifier.background(colors.accentMain.copy(alpha = if (isDark) 0.10f else 0.08f), RoundedCornerShape(4.dp))
                                         else Modifier
                                     )
                                     .then(
@@ -307,7 +310,7 @@ fun PeriodGrid(
                                             onCourseClick(course)
                                         }
                                     }
-                                    .padding(4.dp),
+                                    .padding(horizontal = 6.dp, vertical = 8.dp),
                                 contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                             ) {
                                 CourseCardContent(course, textColor, true, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames, otherWeekAlpha)
@@ -399,7 +402,7 @@ fun PeriodGrid(
                                             onCourseClick(course)
                                         }
                                     }
-                                    .padding(4.dp),
+                                    .padding(horizontal = 6.dp, vertical = 8.dp),
                                 contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                             ) {
                                 CourseCardContent(course, textColor, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames)
@@ -429,7 +432,7 @@ fun PeriodGrid(
                         .shadow(16.dp, RoundedCornerShape(cornerRadius.dp))
                         .clip(RoundedCornerShape(cornerRadius.dp))
                         .background(floatBg.copy(alpha = gridOpacity))
-                        .padding(4.dp),
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
                     contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                 ) {
                     CourseCardContent(course, floatText, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames)
@@ -467,8 +470,9 @@ private fun CourseCardContent(
             Text(
                 text = course.name,
                 color = textColor.copy(alpha = nameAlpha),
-                fontSize = gridTextSize.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 18.sp,
                 maxLines = 3,
                 overflow = TextOverflow.Clip,
                 softWrap = true,
@@ -480,15 +484,18 @@ private fun CourseCardContent(
                     Icons.Filled.Warning,
                     contentDescription = "有作业",
                     tint = Color(0xFFFFB800),
-                    modifier = Modifier.size((gridTextSize + 2).dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
         if (isNonCurrent) {
+            Spacer(Modifier.height(2.dp))
             Text(
                 text = "非本周",
                 color = textColor.copy(alpha = infoAlpha),
-                fontSize = (gridTextSize - 2).sp,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal,
+                lineHeight = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
                 softWrap = false,
@@ -497,13 +504,16 @@ private fun CourseCardContent(
             )
         }
         if (showTeacher && course.teacher.isNotEmpty()) {
+            Spacer(Modifier.height(2.dp))
             Text(
                 text = course.teacher,
                 color = textColor.copy(alpha = infoAlpha),
-                fontSize = (gridTextSize - 2).sp,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                softWrap = false,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal,
+                lineHeight = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = true,
                 textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -516,23 +526,29 @@ private fun CourseCardContent(
                 else room
             } else room
             if (displayRoom.isNotEmpty()) {
+                Spacer(Modifier.height(2.dp))
                 Text(
                     text = displayRoom,
                     color = textColor.copy(alpha = infoAlpha),
-                    fontSize = (gridTextSize - 2).sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Clip,
-                    softWrap = false,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = 14.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = true,
                     textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         }
         if (showOddEven && course.weekType != "all") {
+            Spacer(Modifier.height(2.dp))
             Text(
                 text = if (course.weekType == "odd") "单周" else "双周",
                 color = textColor.copy(alpha = infoAlpha),
-                fontSize = (gridTextSize - 2).sp,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal,
+                lineHeight = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
                 softWrap = false,

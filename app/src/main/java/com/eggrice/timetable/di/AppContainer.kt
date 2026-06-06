@@ -90,7 +90,7 @@ class AppContainer(context: Context) {
     val gridTextSize: StateFlow<Int> = _gridTextSize
 
     fun toggleDashedBorder() { setBool("show_dashed_border", !_showDashedBorder.value, _showDashedBorder) }
-    fun toggleTextCentered() { setBool("text_centered", !_textCentered.value, _textCentered) }
+    fun setTextCentered(value: Boolean) { setBool("text_centered", value, _textCentered) }
     fun setGridHeight(value: Int) { setInt("grid_height", value, _gridHeight) }
     fun setGridOpacity(value: Float) {
         _gridOpacity.value = value; prefs.edit().putFloat("grid_opacity", value).apply()
@@ -188,6 +188,24 @@ class AppContainer(context: Context) {
     private val _wallpaperUri = MutableStateFlow(prefs.getString("wallpaper_uri", "") ?: "")
     val wallpaperUri: StateFlow<String> = _wallpaperUri
     fun setWallpaperUri(value: String) { setStr("wallpaper_uri", value, _wallpaperUri) }
+
+    // ── Skin: "wangcai" bundles sea-blue theme + 旺财 pet, "fried_rice" bundles golden theme + 煎蛋 pet ──
+    private val _skin = MutableStateFlow(prefs.getString("app_skin", "wangcai") ?: "wangcai")
+    val skin: StateFlow<String> = _skin
+
+    fun setSkin(value: String) {
+        _skin.value = value; prefs.edit().putString("app_skin", value).apply()
+        when (value) {
+            "wangcai" -> {
+                setColorTheme("default")
+                setPetIndex(3)
+            }
+            "fried_rice" -> {
+                setColorTheme("fried_rice")
+                setPetIndex(1)
+            }
+        }
+    }
 
     // ── Pet: 0=饭团, 1=煎蛋, 2=小咪, 3=旺财, 4=跳跳, 5=滚滚 ──
     private val _petIndex = MutableStateFlow(prefs.getInt("pet_index", 0))
