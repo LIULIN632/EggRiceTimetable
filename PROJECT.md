@@ -1,20 +1,6 @@
-# 蛋炒饭课程表 (EggRice Timetable)
+# 蛋炒饭课程表 — 技术文档
 
-> 极简 Android 课程表，Kotlin + Jetpack Compose。支持真实教务系统一键导入，所有数据仅存本地。
-
-## 项目基础信息
-
-| 属性 | 值 |
-|------|-----|
-| 项目名称 | 蛋炒饭课程表 |
-| 包名 | `com.eggrice.timetable` |
-| 项目类型 | Android 原生应用 |
-| 语言 | Kotlin |
-| 最低 SDK | 29 (Android 10) |
-| 目标 SDK | 34 (Android 14) |
-| Gradle | 8.14.3 |
-| AGP | 8.7.3 |
-| Kotlin | 2.0.21 |
+> 包名 `com.eggrice.timetable` · Android 10+ (API 29-34) · Kotlin + Compose
 
 ## 项目架构
 
@@ -39,27 +25,20 @@
 ## 目录结构
 
 ```
-D:\AICAN\
-├── app/
-│   └── src/main/java/com/eggrice/timetable/
-│       ├── ui/
-│       │   ├── timetable/      — 课程表主页 + 组件
-│       │   ├── import_/        — 教务导入页面
-│       │   ├── profile/        — 个人页 + 设置
-│       │   ├── treasurebox/    — 百宝箱
-│       │   └── theme/          — Color.kt + Theme.kt
-│       ├── data/
-│       │   ├── db/             — Room 数据库 + DAO
-│       │   ├── entity/         — 数据实体
-│       │   └── repository/     — 数据仓库
-│       ├── network/            — OkHttp 教务爬虫
-│       ├── di/                 — AppContainer 依赖注入
-│       └── util/               — 工具类
-├── build.gradle.kts
-├── build.bat                   — 一键构建脚本
-├── README.md
-├── CLAUDE.md
-└── PROJECT.md
+app/src/main/java/com/eggrice/timetable/
+├── ui/
+│   ├── timetable/          — 课程表主页 + 组件
+│   ├── import_/            — 教务导入页面
+│   ├── profile/            — 个人页 + 设置
+│   ├── treasurebox/        — 百宝箱
+│   └── theme/              — Color.kt + Theme.kt
+├── data/
+│   ├── db/                 — Room 数据库 + DAO
+│   ├── entity/             — 数据实体
+│   └── repository/         — 数据仓库
+├── network/                — OkHttp 教务爬虫
+├── di/                     — AppContainer 依赖注入
+└── util/                   — 工具类
 ```
 
 ## 核心功能清单
@@ -98,9 +77,9 @@ D:\AICAN\
 - [x] 更新日志
 - [x] 崩溃日志导出
 
-## 数据结构
+## 实体定义
 
-### CourseEntity (Room)
+### CourseEntity
 ```kotlin
 @Entity
 data class CourseEntity(
@@ -118,21 +97,28 @@ data class CourseEntity(
 )
 ```
 
-## 构建命令
-
-```bash
-# 编译
-.\gradlew assembleDebug
-# 输出: app/build/outputs/apk/debug/app-debug.apk
-
-# 重命名到根目录
-.\gradlew renameApk
-
-# 或双击 build.bat 一键构建
+### SchemeEntity
+```kotlin
+@Entity
+data class SchemeEntity(
+    val name: String,           // 方案名称
+    val termStart: String,      // 学期起始日期
+    val maxWeeks: Int,          // 最大周数
+    val slotCounts: String,     // 每节课时间 JSON
+)
 ```
 
-## 版本
+### TimeSlotEntity
+```kotlin
+@Entity
+data class TimeSlotEntity(
+    val slotIndex: Int,     // 节次索引
+    val startTime: String,  // 开始时间 HH:mm
+    val endTime: String,    // 结束时间 HH:mm
+    val schemeId: Long,     // 所属方案
+)
+```
 
-- 当前 APK: `蛋炒饭课程表_v7.6.apk`
-- 包名: `com.eggrice.timetable`
-- minSdk: 29, targetSdk: 34
+## 构建产物
+
+构建产出 APK 到项目根目录，仅保留中文资源，R8 混淆 + 资源压缩。

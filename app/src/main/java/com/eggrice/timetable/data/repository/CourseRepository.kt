@@ -1,6 +1,8 @@
 package com.eggrice.timetable.data.repository
 
 import com.eggrice.timetable.data.dao.CourseDao
+import com.eggrice.timetable.data.dao.TeacherDao
+import com.eggrice.timetable.data.entity.TeacherEntity
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.entity.GoodItemEntity
 import com.eggrice.timetable.data.entity.TreeHoleEntity
@@ -10,7 +12,7 @@ import com.eggrice.timetable.data.entity.TaskEntity
 import com.eggrice.timetable.data.entity.TimeSlotEntity
 import kotlinx.coroutines.flow.Flow
 
-class CourseRepository(private val dao: CourseDao) {
+class CourseRepository(private val dao: CourseDao, private val teacherDao: TeacherDao) {
     val allCourses: Flow<List<CourseEntity>> = dao.getAllCourses()
     val allTimeSlots: Flow<List<TimeSlotEntity>> = dao.getAllTimeSlots()
     val allSchemes: Flow<List<SchemeEntity>> = dao.getAllSchemes()
@@ -40,14 +42,11 @@ class CourseRepository(private val dao: CourseDao) {
         return dao.insertScheme(SchemeEntity(name = name, sortOrder = count))
     }
     suspend fun updateScheme(scheme: SchemeEntity) = dao.updateScheme(scheme)
-    suspend fun deleteScheme(id: Long) = dao.deleteScheme(id)
+    suspend fun deleteSchemeCascade(id: Long) = dao.deleteSchemeCascade(id)
     suspend fun getSchemeById(id: Long) = dao.getSchemeById(id)
 
     suspend fun deleteAllTimeSlots() = dao.deleteAllTimeSlots()
-    suspend fun replaceTimeSlots(slots: List<TimeSlotEntity>) {
-        dao.deleteAllTimeSlots()
-        if (slots.isNotEmpty()) dao.insertTimeSlots(slots)
-    }
+    suspend fun replaceTimeSlots(slots: List<TimeSlotEntity>) = dao.replaceAllTimeSlots(slots)
 
     // ── Homework operations ──
     fun getHomeworkByScheme(schemeId: Long) = dao.getHomeworkByScheme(schemeId)
@@ -74,6 +73,13 @@ class CourseRepository(private val dao: CourseDao) {
     fun getTreeHolesByScheme(schemeId: Long) = dao.getTreeHolesByScheme(schemeId)
     suspend fun insertTreeHole(item: TreeHoleEntity) = dao.insertTreeHole(item)
     suspend fun deleteTreeHole(id: Long) = dao.deleteTreeHole(id)
+
+    // ── Teacher operations ──
+    fun getAllTeachers(): Flow<List<TeacherEntity>> = teacherDao.getAllTeachers()
+    suspend fun getTeacherByName(name: String): TeacherEntity? = teacherDao.getTeacherByName(name)
+    suspend fun insertTeacher(teacher: TeacherEntity) = teacherDao.insertTeacher(teacher)
+    suspend fun deleteTeacher(name: String) = teacherDao.deleteTeacher(name)
+    fun getDistinctTeacherNames(schemeId: Long): Flow<List<String>> = teacherDao.getDistinctTeacherNames(schemeId)
 
     // 首次启动填充默认12节课时间段；仅在time_slots表为空时调用
     suspend fun initTimeSlots() {

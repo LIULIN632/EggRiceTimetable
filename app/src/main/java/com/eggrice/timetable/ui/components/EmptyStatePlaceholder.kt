@@ -1,5 +1,6 @@
 package com.eggrice.timetable.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -14,10 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.eggrice.timetable.R
 import com.eggrice.timetable.ui.theme.*
 
 @Composable
@@ -56,7 +60,6 @@ fun TimetableEmptyState(
     modifier: Modifier = Modifier
 ) {
     val colors = LocalEggRiceColors.current
-    val isDark = LocalDarkMode.current
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -66,16 +69,12 @@ fun TimetableEmptyState(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Dog illustration — warm yellow circle with emoji
-            Box(
-                modifier = Modifier
-                    .size(120.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFFFF3E0).copy(alpha = if (isDark) 0.15f else 0.6f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("🐶", fontSize = 56.sp)
-            }
+            Image(
+                painter = painterResource(id = R.drawable.empty_state_dog),
+                contentDescription = null,
+                modifier = Modifier.width(240.dp),
+                contentScale = ContentScale.Fit
+            )
 
             Spacer(Modifier.height(24.dp))
 

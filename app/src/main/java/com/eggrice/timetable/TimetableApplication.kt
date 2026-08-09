@@ -9,7 +9,7 @@ import com.eggrice.timetable.util.CrashHandler
 
 class TimetableApplication : Application() {
     val database: TimetableDatabase by lazy { TimetableDatabase.getInstance(this) }
-    val repository: CourseRepository by lazy { CourseRepository(database.courseDao()) }
+    val repository: CourseRepository by lazy { CourseRepository(database.courseDao(), database.teacherDao()) }
     val appContainer: AppContainer by lazy { AppContainer(this) }
     lateinit var crashHandler: CrashHandler
 

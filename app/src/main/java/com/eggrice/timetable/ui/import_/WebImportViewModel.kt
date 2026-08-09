@@ -8,6 +8,9 @@ import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -16,6 +19,7 @@ import com.eggrice.timetable.data.School
 import com.eggrice.timetable.data.SchoolRegistry
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.repository.CourseRepository
+import com.eggrice.timetable.di.AppContainer
 import com.eggrice.timetable.network.CookieStore
 import com.eggrice.timetable.network.CourseFields
 import com.eggrice.timetable.network.parseSlotRange
@@ -36,6 +40,7 @@ import com.eggrice.timetable.network.parseVerticalTable
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -148,6 +153,7 @@ val ANDROID_BRIDGE_PROMISE_JS = """
 class WebImportViewModel(
     private val repository: CourseRepository,
     private val schoolRegistry: SchoolRegistry,
+    private val appContainer: AppContainer,
     private val schemeIdProvider: () -> Long = { 0L }
 ) : ViewModel() {
 
@@ -181,12 +187,23 @@ class WebImportViewModel(
 
     private var urlHistoryPrefs: SharedPreferences? = null
 
-    val filteredSchools: StateFlow<List<School>> = combine(_searchQuery, _selectedSchool) { query, _ ->
-        if (query.isBlank()) schoolRegistry.allSchools
-        else schoolRegistry.allSchools.filter {
+    val favoriteIds: StateFlow<Set<String>> = appContainer.favoriteSchoolIds
+
+    fun toggleFavorite(school: School) {
+        appContainer.toggleFavoriteSchool(school.id)
+    }
+
+    val filteredSchools: StateFlow<List<School>> = combine(_searchQuery, _selectedSchool, appContainer.customSchools, appContainer.favoriteSchoolIds) { query, _, customSchools, favIds ->
+        val all = schoolRegistry.allSchools + customSchools
+        val base = if (query.isBlank()) all
+        else all.filter {
             it.name.contains(query, ignoreCase = true) ||
             it.city.contains(query, ignoreCase = true)
         }
+        base.sortedWith(
+            compareByDescending<School> { it.id in favIds }
+                .thenBy { com.eggrice.timetable.util.PinyinSortUtil.sortKey(it.name) }
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _importedCount = MutableStateFlow(0)
@@ -204,6 +221,11 @@ class WebImportViewModel(
     private val _detectedCount = MutableStateFlow(0)
     val detectedCount: StateFlow<Int> = _detectedCount
 
+    // ── Remember password ──
+    var username by mutableStateOf("")
+    var password by mutableStateOf("")
+    var isRememberChecked by mutableStateOf(true)
+
     // Tracks whether HTML capture should auto-save (manual import) or only detect
     private var manualImportMode = false
 
@@ -212,7 +234,11 @@ class WebImportViewModel(
 
     fun updateSearch(query: String) { _searchQuery.value = query }
     fun selectSchool(school: School) { _selectedSchool.value = school; _freeUrlActive.value = false; _importedCount.value = 0 }
-    fun clearSchool() { _selectedSchool.value = null; _freeUrlActive.value = false; _importedCount.value = 0; _detectedCount.value = 0 }
+    fun clearSchool() {
+        flushAutoSave()
+        cancelPendingInjections()
+        _selectedSchool.value = null; _freeUrlActive.value = false; _importedCount.value = 0; _detectedCount.value = 0
+    }
     fun setCustomUrl(url: String) { _customUrl.value = url }
     fun toastShown() { _toastMessage.value = null }
 
@@ -243,11 +269,21 @@ class WebImportViewModel(
 
     /** Exit free URL mode and return to school list. */
     fun exitFreeUrlMode() {
+        flushAutoSave()
+        cancelPendingInjections()
         _freeUrlActive.value = false
         _customUrl.value = ""
         _selectedSchool.value = null
         _importedCount.value = 0
         _detectedCount.value = 0
+    }
+
+    /** Flush any pending debounced save immediately. Called on navigation. */
+    fun flushAutoSave() {
+        autoSaveJob?.cancel()
+        if (isRememberChecked && username.isNotBlank() && password.isNotBlank()) {
+            saveCredentials()
+        }
     }
 
     private fun saveUrlToHistory(url: String) {
@@ -267,11 +303,318 @@ class WebImportViewModel(
         urlHistoryPrefs?.edit()?.putString("history", Gson().toJson(history))?.apply()
     }
 
+    /** Add a custom school entered by the user, persisted to SharedPreferences. */
+    fun addCustomSchool(name: String, url: String, jwType: JwSystemType) {
+        val trimmedUrl = url.trim().trimEnd('/')
+        val school = School(
+            id = "custom_${System.currentTimeMillis()}",
+            name = name.trim(),
+            city = "自定义",
+            jwType = jwType,
+            baseUrl = if (trimmedUrl.startsWith("http")) trimmedUrl else "https://$trimmedUrl",
+            isV8 = true
+        )
+        appContainer.addCustomSchool(school)
+    }
+
     /** The effective URL to load: customUrl > school.baseUrl. */
     fun getEffectiveUrl(): String? {
         val custom = _customUrl.value.trim()
         if (custom.isNotEmpty()) return custom
         return _selectedSchool.value?.baseUrl?.trimEnd('/')
+    }
+
+    // ═══════════════════════════════════════════
+    //  Remember password — save/load encrypted credentials
+    // ═══════════════════════════════════════════
+
+    private var autoSaveJob: kotlinx.coroutines.Job? = null
+    private var loadJob: kotlinx.coroutines.Job? = null
+    private val pendingInjectRunnables = mutableListOf<Runnable>()
+
+    /** Whether the current school has saved credentials in Room. */
+    var hasSavedCredentials by mutableStateOf(false)
+
+    /** Debounced save — called on every keystroke when isRememberChecked is true. */
+    fun scheduleAutoSave() {
+        if (!isRememberChecked) return
+        autoSaveJob?.cancel()
+        autoSaveJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(1500)
+            saveCredentials()
+        }
+    }
+
+    fun loadSavedAccount(targetBaseUrl: String) {
+        if (targetBaseUrl.isBlank()) return
+        loadJob?.cancel()
+        username = ""
+        password = ""
+        hasSavedCredentials = false
+        credentialsReady = false
+        loadJob = viewModelScope.launch {
+            val (user, pass) = appContainer.loadCredential(targetBaseUrl) ?: run {
+                Log.d(TAG, "未找到保存的凭证: baseUrl=$targetBaseUrl")
+                return@launch
+            }
+            username = user
+            password = pass
+            hasSavedCredentials = true
+            credentialsReady = true
+            Log.d(TAG, "凭证已加载: user='${username.take(3)}***' pwd_len=${password.length} baseUrl=$targetBaseUrl")
+            // 只在登录页面自动填入：带当前 URL 触发 isLikelyLoginPage 检查，
+            // 非登录页（主页/课表页等）不注入；页面尚未加载时交由 onPageFinished 处理。
+            val currentUrl = webView?.url
+            if (!currentUrl.isNullOrBlank()) {
+                injectCredentialsToWebView(currentUrl)
+            }
+        }
+    }
+
+    fun saveCredentials() {
+        autoSaveJob?.cancel()
+        val baseUrl = getEffectiveUrl()?.trimEnd('/') ?: return
+        val uname = username.trim()
+        val pwd = password
+        if (uname.isBlank() || pwd.isBlank()) return
+        if (!isRememberChecked) {
+            appContainer.deleteCredential(baseUrl)
+            hasSavedCredentials = false
+            return
+        }
+        appContainer.saveCredential(baseUrl, uname, pwd)
+        hasSavedCredentials = true
+        Log.d(TAG, "凭证已保存: user='${uname.take(3)}***' baseUrl=$baseUrl")
+    }
+
+    fun clearSavedCredentials() {
+        val baseUrl = getEffectiveUrl()?.trimEnd('/') ?: return
+        appContainer.deleteCredential(baseUrl)
+        username = ""
+        password = ""
+        hasSavedCredentials = false
+        credentialsReady = false
+    }
+
+    /** Cancel all pending handler callbacks — call from DisposableEffect. */
+    fun cancelPendingInjections() {
+        pendingInjectRunnables.forEach { handler.removeCallbacks(it) }
+        pendingInjectRunnables.clear()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        cancelPendingInjections()
+    }
+
+    private var lastInjectedUrl: String? = null
+    // Set by loadSavedAccount once credentials are loaded (prevents onPageFinished from injecting stale data)
+    private var credentialsReady = false
+
+    /** Inject saved credentials into the WebView's login form via JS, with retry.
+     *  Uses native value setter + multiple events to work with React/Vue/jQuery based教务 pages. */
+    fun injectCredentialsToWebView(url: String? = null, retriesLeft: Int = 5) {
+        val uname = username.trim()
+        val pwd = password
+        if (uname.isBlank() && pwd.isBlank()) return
+        if (webView == null) return
+
+        // If called from onPageFinished (url != null) but credentials haven't loaded yet,
+        // skip — loadSavedAccount will inject when ready.
+        if (url != null && !credentialsReady) return
+
+        // Skip injection on non-login pages
+        if (url != null && !isLikelyLoginPage(url)) return
+
+        // Skip repeated injections on same page (onPageFinished fires multiple times for redirects)
+        if (url != null && url == lastInjectedUrl) return
+
+        Log.d(TAG, "注入凭证: user='${uname.take(3)}***' pwd_len=${pwd.length} url=${url?.take(60)}")
+
+        val escapedUname = escapeJsString(uname)
+        val escapedPwd = escapeJsString(pwd)
+        val js = """
+            (function(){
+                var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+
+                // fillField: three strategies for dumping value into a controlled input
+                function fillField(el, val) {
+                    if (!el) return false;
+                    el.focus();
+
+                    // Strategy A: native setter + input/change events (works for Vue/jQuery)
+                    nativeSetter.call(el, val);
+                    el.dispatchEvent(new Event('input', {bubbles: true, cancelable: true}));
+                    el.dispatchEvent(new Event('change', {bubbles: true, cancelable: true}));
+                    if (el.value === val) return true;
+
+                    // Strategy B: execCommand('insertText') — the React-approved way
+                    try {
+                        el.select();
+                        var ok = document.execCommand('insertText', false, val);
+                        if (ok && el.value === val) return true;
+                    } catch(e) {}
+
+                    // Strategy C: character-by-character via composition events (desperate measure)
+                    nativeSetter.call(el, '');
+                    el.dispatchEvent(new CompositionEvent('compositionstart', {bubbles: true}));
+                    el.dispatchEvent(new CompositionEvent('compositionupdate', {bubbles: true, data: val}));
+                    nativeSetter.call(el, val);
+                    el.dispatchEvent(new CompositionEvent('compositionend', {bubbles: true, data: val}));
+                    el.dispatchEvent(new InputEvent('input', {bubbles: true, cancelable: true, inputType: 'insertText', data: val}));
+                    el.dispatchEvent(new Event('change', {bubbles: true}));
+                    return el.value === val;
+                }
+
+                function isVisible(el) {
+                    var r = el.getBoundingClientRect();
+                    var cs = window.getComputedStyle(el);
+                    return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden';
+                }
+
+                // Heuristic: is this input likely below another element on screen?
+                function isBelow(el, otherEl) {
+                    try {
+                        return el.getBoundingClientRect().top > otherEl.getBoundingClientRect().top;
+                    } catch(e) { return false; }
+                }
+
+                function tryFillInDoc(doc) {
+                    var uEl = null, pEl = null;
+
+                    // 安全护栏：页面无密码框（type=password 或已知密码字段名）即非登录表单，
+                    // 一律不填充——防止 URL 误判时把账号填进主页搜索框、成绩页页数框等。
+                    var hasPwAnchor = doc.querySelector('input[type="password"]') != null;
+                    if (!hasPwAnchor) {
+                        var pwAnchors = ['input[name="mm"]','input[name="password"]','input[name="txtPassword"]','input[name="txtMm"]','input[name="pwd"]','input[name="passwd"]','input[name="kl"]','input[name="txtPwd"]','input[name="txtPw"]','input[name="txtKl"]','input[placeholder*="密码"]','input[placeholder*="口令"]'];
+                        for (var sa = 0; sa < pwAnchors.length; sa++) {
+                            var pa = doc.querySelector(pwAnchors[sa]);
+                            if (pa && isVisible(pa)) { hasPwAnchor = true; break; }
+                        }
+                    }
+                    if (!hasPwAnchor) return 0;
+
+                    // Username selectors
+                    var uSelectors = ['input[name="yhm"]','input[id="yhm"]','input[name="xh"]','input[id="xh"]','input[name="username"]','input[id="username"]','input[name="txtUserName"]','input[id="txtUserName"]','input[name="txtYhm"]','input[id="txtYhm"]','input[name="userAccount"]','input[id="userAccount"]','input[name="UID"]','input[id="UID"]','input[name="uid"]','input[id="uid"]','input[name="userid"]','input[id="userid"]','input[placeholder*="学号"]','input[placeholder*="账号"]','input[placeholder*="工号"]','input[placeholder*="用户"]'];
+                    for (var s = 0; s < uSelectors.length; s++) {
+                        var el = doc.querySelector(uSelectors[s]);
+                        if (el && isVisible(el)) { uEl = el; break; }
+                    }
+
+                    // Password selectors
+                    var pSelectors = ['input[name="mm"]','input[id="mm"]','input[name="password"]','input[id="password"]','input[name="txtPassword"]','input[id="txtPassword"]','input[name="txtMm"]','input[id="txtMm"]','input[name="pwd"]','input[id="pwd"]','input[name="passwd"]','input[id="passwd"]','input[name="kl"]','input[id="kl"]','input[name="txtPwd"]','input[id="txtPwd"]','input[name="txtPw"]','input[id="txtPw"]','input[name="txtKl"]','input[id="txtKl"]','input[placeholder*="密码"]','input[placeholder*="口令"]','input[placeholder*="Password"]'];
+                    for (var ps = 0; ps < pSelectors.length; ps++) {
+                        var pel = doc.querySelector(pSelectors[ps]);
+                        if (pel && isVisible(pel)) { pEl = pel; break; }
+                    }
+
+                    // Fallback: collect visible inputs
+                    if (!uEl || !pEl) {
+                        var allInputs = doc.querySelectorAll('input:not([readonly]):not([disabled]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="image"])');
+                        var visibleInputs = [];
+                        for (var i = 0; i < allInputs.length; i++) {
+                            if (isVisible(allInputs[i])) visibleInputs.push(allInputs[i]);
+                        }
+                        if (!uEl && visibleInputs.length >= 1) uEl = visibleInputs[0];
+                        // Find a likely password field: either type=password or positioned below username
+                        if (!pEl) {
+                            for (var vi = 0; vi < visibleInputs.length; vi++) {
+                                var inp = visibleInputs[vi];
+                                if (inp.type === 'password' || (uEl && isBelow(inp, uEl))) {
+                                    if (inp !== uEl) { pEl = inp; break; }
+                                }
+                            }
+                            // Last resort: 2nd visible input
+                            if (!pEl && visibleInputs.length >= 2 && visibleInputs[1] !== uEl) {
+                                pEl = visibleInputs[1];
+                            }
+                        }
+                    }
+
+                    var uOk = false, pOk = false;
+                    if (uEl) uOk = fillField(uEl, '$escapedUname');
+                    if (pEl) pOk = fillField(pEl, '$escapedPwd');
+                    return (uOk && pOk) ? 2 : (uOk || pOk ? 1 : 0);
+                }
+
+                var totalFilled = tryFillInDoc(document);
+                var iframes = document.querySelectorAll('iframe');
+                for (var f = 0; f < iframes.length; f++) {
+                    try {
+                        var idoc = iframes[f].contentDocument || iframes[f].contentWindow.document;
+                        if (idoc) totalFilled += tryFillInDoc(idoc);
+                    } catch(e) {}
+                }
+                return totalFilled >= 2 ? 'OK' : 'NO_FIELDS';
+            })();
+        """.trimIndent()
+        webView?.evaluateJavascript(js) { result ->
+            val trimmed = result.trim('"').trim()
+            if (trimmed == "OK") {
+                if (lastInjectedUrl != url) {
+                    _toastMessage.value = "已自动填充账号"
+                }
+                lastInjectedUrl = url
+            } else if (retriesLeft > 0) {
+                val delay = if (retriesLeft > 2) 2000L else 1000L
+                val r = Runnable {
+                    // 页面可能已跳转（如登录后进入成绩页/课表页），重试前必须用当前 URL
+                    // 重新校验是否仍在登录页，否则会把账号密码注入到非登录页的输入框
+                    // （典型症状：账号被填进成绩查询的"页数框"）。
+                    val currentUrl = webView?.url
+                    if (currentUrl.isNullOrBlank() || !isLikelyLoginPage(currentUrl)) return@Runnable
+                    injectCredentialsToWebView(currentUrl, retriesLeft - 1)
+                }
+                pendingInjectRunnables.add(r)
+                handler.postDelayed(r, delay)
+                handler.postDelayed({ pendingInjectRunnables.remove(r) }, delay)
+            }
+        }
+    }
+
+    /** Escape a string for safe embedding in a JS single-quoted string literal. */
+    private fun escapeJsString(s: String): String {
+        val sb = StringBuilder(s.length + 8)
+        for (ch in s) {
+            when {
+                ch == '\\' -> sb.append("\\\\")
+                ch == '\'' -> sb.append("\\'")
+                ch == '\n' -> sb.append("\\n")
+                ch == '\r' -> sb.append("\\r")
+                ch == '\t' -> sb.append("\\t")
+                ch == '\b' -> sb.append("\\b")
+                ch.code == 0 -> sb.append("\\0")
+                ch.code == 0x0b -> sb.append("\\v")
+                ch.code == 0x0c -> sb.append("\\f")
+                ch.code == 0x2028 -> sb.append("\\u2028")
+                ch.code == 0x2029 -> sb.append("\\u2029")
+                else -> sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
+
+    /** Heuristic: is this URL likely a login/auth page? Avoids injecting on course-schedule pages. */
+    private fun isLikelyLoginPage(url: String): Boolean {
+        val lower = url.lowercase()
+        // 登录页强特征（歧义低），命中即判为登录页——必须先于 skip 判断。
+        // 正方 v8 登录页 jwglxt/xtgl/login_slogin.html 含 "xtgl"+"login"，
+        // 旧版 main/login.jsp、index.jsp 等也靠此兜住。
+        val loginStrong = listOf(
+            "login", "logon", "signin", "sign_in", "sso", "cas", "oauth", "auth", "yhm", "userlogin"
+        )
+        if (loginStrong.any { it in lower }) return true
+        // 明确的数据/功能页，绝不注入：课表、成绩、个人信息、登录后主页等。
+        // 注意：不要包含 xtgl/main/index/default/home 等词——大量登录页 URL 含它们。
+        val skipKeywords = listOf(
+            "kbcx", "kcb", "kb", "schedule", "course", "grade", "score",
+            "chengji", "xscj", "xsxx", "xs_main", "profile", "timetable", "table",
+            "portal", "welcome", "initmenu"
+        )
+        if (skipKeywords.any { it in lower }) return false
+        // 弱特征：仅在没有功能页特征时视为登录页
+        val loginWeak = listOf("password", "passwd", "token")
+        return loginWeak.any { it in lower }
     }
 
     private fun addLog(msg: String) {
@@ -298,12 +641,27 @@ class WebImportViewModel(
             _parseLogs.value = emptyList()
             addLog("正在执行 JS 适配器脚本导入...")
 
+            // Safety timeout: reset _isImporting in case the JS adapter never calls back
+            val timeoutJob = launch {
+                delay(15_000)
+                if (_isImporting.value) {
+                    addLog("导入超时（15秒），已重置导入状态")
+                    _toastMessage.value = "导入超时，请确认已进入课表页面后重试"
+                    _isImporting.value = false
+                }
+            }
+
             try {
                 val jwType = _selectedSchool.value?.jwType
                 val scriptName = if (jwType != null) {
                     when (jwType) {
                         JwSystemType.ZHENGFANG -> "zhengfang_01.js"
-                        JwSystemType.QIANGZHI -> "zhengfang_01.js"
+                        // Qiangzhi systems share the same HTML structure as Zhengfang;
+                        // no dedicated qiangzhi adapter exists, so fall back to zhengfang_01.js
+                        JwSystemType.QIANGZHI -> {
+                            addLog("强智教务无专用适配器，使用正方适配器作为兼容方案")
+                            "zhengfang_01.js"
+                        }
                         JwSystemType.QINGGUO -> "qingguo_jiaowu_qingguo_01.js"
                         JwSystemType.CHAOXING -> "chaoxing_jiaowu_chaoxing.js"
                         JwSystemType.URP -> "urp_jiaowu_urp_01.js"
@@ -347,6 +705,7 @@ class WebImportViewModel(
                 addLog("JS适配器执行失败: ${e.message}")
                 _toastMessage.value = "导入失败：${e.message}"
                 _isImporting.value = false
+                timeoutJob.cancel()
             }
         }
     }
@@ -416,6 +775,7 @@ class WebImportViewModel(
                     _importedCount.value = inserted
                     _detectedCount.value = 0
                     addLog("OkHttp: 成功导入 $inserted 门课程")
+                    saveCredentials()
                 } else {
                     addLog("OkHttp: 未检测到课表数据")
                     _toastMessage.value = "未检测到课表，请确认已进入课表页面"
@@ -462,6 +822,7 @@ class WebImportViewModel(
                     _importedCount.value = inserted
                     _detectedCount.value = 0
                     addLog("手动导入: 成功导入 $inserted 门课程")
+                    saveCredentials()
                 } else {
                     _toastMessage.value = "未检测到课表，请确认已进入课表页面"
                 }
@@ -535,6 +896,7 @@ class WebImportViewModel(
                 _importedCount.value = inserted
                 _detectedCount.value = 0
                 addLog("JS桥接: 成功导入 $inserted 门课程")
+                saveCredentials()
             } catch (e: Exception) {
                 val detail = e.stackTraceToString()
                 addLog("JS桥接: 导入异常: $detail")
@@ -572,12 +934,17 @@ class WebImportViewModel(
         )
     }
 
-    // 直接插入（不去重）
     private suspend fun insertCourses(courses: List<CourseEntity>): Int {
-        if (courses.isNotEmpty()) {
-            repository.insertAll(courses)
+        if (courses.isEmpty()) return 0
+        val schemeId = courses.first().schemeId
+        val existing = repository.getCoursesByScheme(schemeId).first()
+        val newCourses = courses.filter { new ->
+            existing.none { it.name == new.name && it.dayOfWeek == new.dayOfWeek && it.startSlot == new.startSlot }
         }
-        return courses.size
+        if (newCourses.isNotEmpty()) {
+            repository.insertAll(newCourses)
+        }
+        return newCourses.size
     }
 
     // ═══════════════════════════════════════════
@@ -823,11 +1190,12 @@ class WebImportViewModel(
     class Factory(
         private val repository: CourseRepository,
         private val schoolRegistry: SchoolRegistry,
+        private val appContainer: AppContainer,
         private val schemeIdProvider: () -> Long = { 0L }
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            WebImportViewModel(repository, schoolRegistry, schemeIdProvider) as T
+            WebImportViewModel(repository, schoolRegistry, appContainer, schemeIdProvider) as T
     }
 }
 
@@ -920,9 +1288,11 @@ class ScheduleBridge(
 
     @JavascriptInterface
     fun notifyTaskCompletion() {
-        handler.post {
+        // Delay reset so importFromJson has time to complete DB writes first.
+        // If importFromJson was never called, this is the sole reset path.
+        handler.postDelayed({
             viewModel?._isImporting?.value = false
-        }
+        }, 2000)
     }
 
     private fun resolveJsPromise(promiseId: String, result: String) {

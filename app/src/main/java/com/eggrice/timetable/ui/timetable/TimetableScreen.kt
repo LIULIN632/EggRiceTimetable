@@ -1,6 +1,5 @@
 package com.eggrice.timetable.ui.timetable
 
-import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -20,6 +19,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -43,16 +43,14 @@ import com.eggrice.timetable.data.entity.HomeworkEntity
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 import com.eggrice.timetable.ui.timetable.components.PeriodGrid
-import com.eggrice.timetable.ui.timetable.components.PetFAB
-import com.eggrice.timetable.ui.timetable.components.petEmoji
 import com.eggrice.timetable.ui.timetable.components.WeekHeader
 import com.eggrice.timetable.ui.timetable.components.HomeworkListDialog
 import com.eggrice.timetable.ui.timetable.components.AddHomeworkDialog
+import com.eggrice.timetable.ui.timetable.components.TaskPreviewDialog
 import com.eggrice.timetable.ui.profile.SemesterSettingsPage
 import com.eggrice.timetable.ui.components.TimetableEmptyState
-import com.eggrice.timetable.ui.components.PetBubble
-import com.eggrice.timetable.ui.components.rememberPetBubbleState
 import com.eggrice.timetable.ui.theme.*
+import com.eggrice.timetable.util.parseSemesterStart
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -80,34 +78,25 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     val showRoom by container.showRoom.collectAsState()
     val showCampus by container.showCampus.collectAsState()
     val showSlotTime by container.showSlotTime.collectAsState()
-    val showDashedBorder by container.showDashedBorder.collectAsState()
     val textCentered by container.textCentered.collectAsState()
     val cornerRadius by container.cornerRadius.collectAsState()
     val gridTextSize by container.gridTextSize.collectAsState()
     val showOddEven by container.showOddEven.collectAsState()
     val borderStyle by container.borderStyle.collectAsState()
-    val petIndexState by container.petIndex.collectAsState()
     val showNonCurrentWeek by container.showNonCurrentWeek.collectAsState()
     val vibrationMode by container.vibrationMode.collectAsState()
     val gridBgColor by container.gridBgColor.collectAsState()
     val otherWeekAlpha by container.otherWeekAlpha.collectAsState()
+    val verticalLayout by container.verticalLayout.collectAsState()
     val wallpaperUri by container.wallpaperUri.collectAsState()
 
-    // Wallpaper bitmap loading
+    // Wallpaper bitmap loading（降采样解码防 OOM）
     var wallpaperBitmap by remember(wallpaperUri) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     LaunchedEffect(wallpaperUri) {
         if (wallpaperUri.isNotEmpty()) {
             withContext(Dispatchers.IO) {
-                try {
-                    val uri = android.net.Uri.parse(wallpaperUri)
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                        BitmapFactory.decodeStream(stream)?.let { bitmap ->
-                            wallpaperBitmap = bitmap.asImageBitmap()
-                        }
-                    }
-                } catch (_: Exception) {
-                    wallpaperBitmap = null
-                }
+                val bitmap = com.eggrice.timetable.util.decodeScaledWallpaper(context, android.net.Uri.parse(wallpaperUri))
+                if (bitmap != null) wallpaperBitmap = bitmap.asImageBitmap()
             }
         } else {
             wallpaperBitmap = null
@@ -117,20 +106,13 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     val today = LocalDate.now()
     val todayDay = today.dayOfWeek.value
     val semesterStart = container.semesterStart.collectAsState().value
-    val autoWeek = container.autoCurrentWeek()
     val isCurrentWeek by remember { derivedStateOf { currentWeek == container.autoCurrentWeek() } }
 
     val startOfWeek by remember(semesterStart, currentWeek, today, todayDay) {
         derivedStateOf {
-            if (semesterStart.isNotBlank()) {
-                try {
-                    val parts = semesterStart.split("-")
-                    LocalDate.of(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
-                        .plusWeeks((currentWeek - 1).toLong())
-                } catch (_: Exception) { today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong()) }
-            } else {
-                today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong())
-            }
+            parseSemesterStart(semesterStart)
+                ?.plusWeeks((currentWeek - 1).toLong())
+                ?: today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong())
         }
     }
     val endOfWeek by remember { derivedStateOf { startOfWeek.plusDays(6) } }
@@ -145,6 +127,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     }
     var showHomeworkList by remember { mutableStateOf(false) }
     var showAddHomework by remember { mutableStateOf(false) }
+    var showTaskPreview by remember { mutableStateOf(false) }
     var showSemesterSettings by remember { mutableStateOf(false) }
 
     val pendingTasks = remember(allTasks) { allTasks.filter { !it.completed } }
@@ -153,6 +136,15 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     // Hide bottom nav + handle system back when semester settings is open
     LaunchedEffect(showSemesterSettings) { onSubPageChange(showSemesterSettings) }
     BackHandler(enabled = showSemesterSettings) { showSemesterSettings = false }
+
+    // Full-screen semester settings overlay
+    if (showSemesterSettings) {
+        SemesterSettingsPage(
+            container = container,
+            onBack = { showSemesterSettings = false }
+        )
+        return
+    }
 
     // Active homework course names (non-completed) — for asterisk marks on cards
     val homeworkCourseNames by app.repository.getActiveHomeworkCourseNames(schemeId)
@@ -176,89 +168,12 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
 
     val hasWallpaper = wallpaperBitmap != null
 
-    // ── Pet bubble state & message ──
-    val petBubbleState = rememberPetBubbleState()
-
-    val petMessage = remember(todayDay, allTasks, filteredCourses, timeSlots) {
-        val unfinishedCount = allTasks.count { !it.completed }
-        val todayCourses = filteredCourses.filter { it.dayOfWeek == todayDay }
-
-        when {
-            todayDay in 6..7 -> "终于放假啦！"
-            unfinishedCount > 0 -> "汪！你还有${unfinishedCount}项没完成～"
-            todayCourses.isEmpty() -> null
-            else -> {
-                val now = LocalDate.now()
-                val nowMinutes = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
-                val upcoming = todayCourses.minByOrNull { course ->
-                    val slot = timeSlots.find { it.slot == course.startSlot }
-                    val startMin = slot?.startTime?.let { t ->
-                        val parts = t.split(":")
-                        parts[0].toInt() * 60 + parts[1].toInt()
-                    } ?: Int.MAX_VALUE
-                    if (startMin >= nowMinutes) startMin else Int.MAX_VALUE
-                }
-                if (upcoming != null) {
-                    val slot = timeSlots.find { it.slot == upcoming.startSlot }
-                    val startMin = slot?.startTime?.let { t ->
-                        val parts = t.split(":")
-                        parts[0].toInt() * 60 + parts[1].toInt()
-                    } ?: Int.MAX_VALUE
-                    val diff = startMin - nowMinutes
-                    if (diff in 1..15) "还有${diff}分钟上课啦"
-                    else if (nowMinutes > startMin) "今天辛苦啦～"
-                    else null
-                } else "今天辛苦啦～"
-            }
-        }
-    }
-
-    // Messages that vary each click — casual reminders
-    val casualMessages = remember {
-        listOf(
-            "记得多喝水哦～",
-            "休息一下，看看远处吧",
-            "今天也要加油！",
-            "准备上课啦～",
-            "汪！摸摸头～",
-            "吃饭要吃饱哦！",
-            "天冷了记得加衣服～",
-            "你是最棒的！"
-        )
-    }
-
-    val petClickMessage = remember(todayDay, pendingCount, filteredCourses) {
-        val todayCourses = filteredCourses.filter { it.dayOfWeek == todayDay }
-        when {
-            pendingCount > 0 -> "汪！你还有${pendingCount}项没完成～"
-            todayDay in 6..7 -> "周末也要记得休息哦～"
-            todayCourses.isEmpty() -> casualMessages.random()
-            else -> casualMessages.random()
-        }
-    }
-
-    LaunchedEffect(petMessage) {
-        petMessage?.let { petBubbleState.show(it, scope) }
-    }
-
-    Scaffold(
-        containerColor = if (hasWallpaper) Color.Transparent else colors.surfaceBase,
-        floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                PetBubble(
-                    message = petBubbleState.message ?: "",
-                    visible = petBubbleState.message != null,
-                    modifier = Modifier.padding(end = 8.dp, bottom = 4.dp)
-                )
-                PetFAB(
-                    petEmoji = petEmoji(petIndexState),
-                    badgeCount = pendingCount,
-                    onClick = { petBubbleState.show(petClickMessage, scope) },
-                    onLongClick = { viewModel.goToToday() }
-                )
-            }
-        }
-    ) { padding ->
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Scaffold(
+            containerColor = if (hasWallpaper) Color.Transparent else colors.surfaceBase,
+        ) { padding ->
         Box(
             modifier = Modifier.fillMaxSize().padding(padding)
         ) {
@@ -346,7 +261,11 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
             )
 
             // ── Course grid area ──
-            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
                 if (courses.isEmpty()) {
                     TimetableEmptyState(
                         onAddCourse = { viewModel.openAddEditor() }
@@ -361,7 +280,6 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                         showRoom = showRoom,
                         showCampus = showCampus,
                         showSlotTime = showSlotTime,
-                        showDashedBorder = showDashedBorder,
                         textCentered = textCentered,
                         gridHeightProvider = { container.gridHeight.value },
                         cornerRadius = cornerRadius,
@@ -374,6 +292,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                         vibrationMode = vibrationMode,
                         gridBgColor = gridBgColor,
                         otherWeekAlpha = otherWeekAlpha,
+                        verticalLayout = verticalLayout,
                         homeworkCourseNames = homeworkCourseNames.toSet(),
                         onCourseClick = { viewModel.openEditEditor(it) },
                         onEmptyCellClick = { day, slot -> viewModel.openAddEditor(day, slot) },
@@ -385,7 +304,9 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
             }
             }
         }
-    }
+        } // end Scaffold content lambda
+
+    } // end outer Box
 
     if (showEditor && editingCourse != null) {
         CourseEditorDialog(
@@ -415,6 +336,16 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
         )
     }
 
+    if (showTaskPreview) {
+        TaskPreviewDialog(
+            tasks = allTasks,
+            repository = app.repository,
+            schemeId = schemeId,
+            onDismiss = { showTaskPreview = false },
+            onViewAll = { showTaskPreview = false }
+        )
+    }
+
     if (showHomeworkList) {
         HomeworkListDialog(
             homework = filteredHomework,
@@ -440,12 +371,14 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
         AddHomeworkDialog(
             onDismiss = { showAddHomework = false },
             existingCourses = timetableCourseNames,
-            onSave = { courseName, content, dueDate ->
+            initialCourseName = "",
+            onSave = { name, content, dueDate ->
                 val hw = HomeworkEntity(
-                    courseName = courseName,
+                    courseName = name,
                     content = content,
                     dueDate = dueDate,
-                    schemeId = schemeId
+                    schemeId = schemeId,
+                    createdAt = System.currentTimeMillis()
                 )
                 scope.launch {
                     app.repository.insertHomework(hw)
@@ -454,20 +387,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
             }
         )
     }
-
-    if (showSemesterSettings) {
-        SemesterSettingsPage(
-            container = container,
-            onBack = { showSemesterSettings = false }
-        )
-    }
-
 }
-
-// ═══════════════════════════════════════════
-//  Course Editor Dialog
-// ═══════════════════════════════════════════
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseEditorDialog(
@@ -787,3 +707,5 @@ fun DeleteRangeDialog(
         }
     )
 }
+
+

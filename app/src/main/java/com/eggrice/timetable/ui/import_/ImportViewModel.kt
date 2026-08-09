@@ -8,7 +8,10 @@ import com.eggrice.timetable.data.School
 import com.eggrice.timetable.data.SchoolRegistry
 import com.eggrice.timetable.data.isJwSystemAvailable
 import com.eggrice.timetable.data.repository.CourseRepository
+import com.eggrice.timetable.di.AppContainer
 import com.eggrice.timetable.network.LoginResult
+import com.eggrice.timetable.network.QiangZhiClient
+import com.eggrice.timetable.network.QiangZhiSchool
 import com.eggrice.timetable.network.ZhengfangClient
 import com.eggrice.timetable.network.ZhengfangSchool
 import kotlinx.coroutines.CancellationException
@@ -30,7 +33,9 @@ import kotlin.coroutines.resume
 class ImportViewModel(
     private val repository: CourseRepository,
     private val client: ZhengfangClient,
-    private val schoolRegistry: SchoolRegistry
+    private val qiangzhiClient: QiangZhiClient,
+    private val schoolRegistry: SchoolRegistry,
+    private val appContainer: AppContainer
 ) : ViewModel() {
     private val _selectedSystem = MutableStateFlow<JwSystemType?>(null)
     val selectedSystem: StateFlow<JwSystemType?> = _selectedSystem
@@ -41,8 +46,26 @@ class ImportViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
-    val filteredSchools: StateFlow<List<School>> = combine(_searchQuery, _selectedSystem) { query, system ->
-        if (system != null) schoolRegistry.filter(system, query) else emptyList()
+    private val _favoriteIds = appContainer.favoriteSchoolIds
+    val favoriteIds: StateFlow<Set<String>> = _favoriteIds
+
+    fun toggleFavorite(school: School) {
+        appContainer.toggleFavoriteSchool(school.id)
+    }
+
+    val filteredSchools: StateFlow<List<School>> = combine(
+        _searchQuery, _selectedSystem, _favoriteIds, appContainer.customSchools
+    ) { query, system, favIds, customSchools ->
+        val registrySchools = if (system != null) schoolRegistry.filter(system, query) else emptyList()
+        val matchingCustoms = if (system != null) {
+            customSchools.filter {
+                it.jwType == system && (query.isBlank() || it.name.contains(query, ignoreCase = true))
+            }
+        } else emptyList()
+        (matchingCustoms + registrySchools).sortedWith(
+            compareByDescending<School> { it.id in favIds }
+                .thenBy { com.eggrice.timetable.util.PinyinSortUtil.sortKey(it.name) }
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _progress = MutableStateFlow("")
@@ -77,11 +100,42 @@ class ImportViewModel(
         _selectedSchool.value = school
     }
 
+    /** 添加用户手动输入的学校（指定教务系统类型，持久化到 SharedPreferences），返回新学校供自动选中。 */
+    fun addCustomSchool(name: String, url: String, jwType: JwSystemType): School? {
+        val trimmedUrl = url.trim().trimEnd('/')
+        if (name.isBlank() || trimmedUrl.isBlank()) return null
+        val school = School(
+            id = "custom_${System.currentTimeMillis()}",
+            name = name.trim(),
+            city = "自定义",
+            jwType = jwType,
+            baseUrl = if (trimmedUrl.startsWith("http")) trimmedUrl else "https://$trimmedUrl",
+            isV8 = true
+        )
+        appContainer.addCustomSchool(school)
+        return school
+    }
+
+    // ── Credential memory ──
+    fun loadSavedCredentials(baseUrl: String): Pair<String, String>? =
+        appContainer.loadCredential(baseUrl)
+
+    fun saveCredentials(baseUrl: String, username: String, password: String) {
+        appContainer.saveCredential(baseUrl, username, password)
+    }
+
+    fun deleteCredentials(baseUrl: String) {
+        appContainer.deleteCredential(baseUrl)
+    }
+
     fun updateSearch(query: String) {
         _searchQuery.value = query
     }
 
     fun goBack() {
+        cancelCaptcha()
+        _result.value = null
+        _progress.value = ""
         if (_selectedSchool.value != null) {
             _selectedSchool.value = null
         } else if (_selectedSystem.value != null) {
@@ -104,44 +158,76 @@ class ImportViewModel(
         _showCaptcha.value = false
 
         val zfSchool = ZhengfangSchool(school.name, school.baseUrl.trimEnd('/'), school.isV8)
+        val qzSchool = QiangZhiSchool(school.name, school.baseUrl.trimEnd('/'))
 
         loginJob = viewModelScope.launch {
             try {
-                val res = client.login(
-                    school = zfSchool,
-                    username = username,
-                    password = password,
-                    onProgress = { msg -> _progress.value = msg },
-                    onCaptcha = { captchaResult ->
-                        captchaRefresher = captchaResult.refresh
-                        withContext(Dispatchers.Main) {
-                            _captchaBase64.value = captchaResult.base64
-                            _showCaptcha.value = true
-                        }
-                        suspendCancellableCoroutine<String> { cont ->
-                            captchaContinuation = { code ->
-                                if (cont.isActive) cont.resume(code)
+                val res = when (school.jwType) {
+                    JwSystemType.ZHENGFANG -> client.login(
+                        school = zfSchool,
+                        username = username,
+                        password = password,
+                        onProgress = { msg -> _progress.value = msg },
+                        onCaptcha = { captchaResult ->
+                            captchaRefresher = captchaResult.refresh
+                            withContext(Dispatchers.Main) {
+                                _captchaBase64.value = captchaResult.base64
+                                _showCaptcha.value = true
                             }
-                            cont.invokeOnCancellation {
-                                captchaContinuation = null
+                            suspendCancellableCoroutine<String> { cont ->
+                                if (cont.isActive) {
+                                    captchaContinuation = { code ->
+                                        if (cont.isActive && !code.isNullOrBlank()) {
+                                            cont.resume(code)
+                                        }
+                                    }
+                                    cont.invokeOnCancellation {
+                                        captchaContinuation = null
+                                    }
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                    else -> qiangzhiClient.login(
+                        school = qzSchool,
+                        username = username,
+                        password = password,
+                        onProgress = { msg -> _progress.value = msg }
+                    )
+                }
                 _isLoading.value = false
                 _showCaptcha.value = false
                 _result.value = res
 
                 if (res.success && res.courses != null) {
-                    val existing = repository.allCourses.first()
-                    val newCourses = res.courses.filter { new ->
-                        existing.none { existingCourse ->
-                            existingCourse.name == new.name &&
-                            existingCourse.dayOfWeek == new.dayOfWeek &&
-                            existingCourse.startSlot == new.startSlot
+                    // 与 Web 导入一致：写入当前激活的方案，而不是默认方案
+                    val schemeId = appContainer.activeSchemeId.value
+                    try {
+                        val existing = repository.allCourses.first()
+                        val newCourses = res.courses
+                            .filter { new ->
+                                existing.none { existingCourse ->
+                                    existingCourse.schemeId == schemeId &&
+                                    existingCourse.name == new.name &&
+                                    existingCourse.dayOfWeek == new.dayOfWeek &&
+                                    existingCourse.startSlot == new.startSlot
+                                }
+                            }
+                            .map { it.copy(schemeId = schemeId) }
+                        repository.insertAll(newCourses)
+                    } catch (e: Exception) {
+                        // DB 写入失败不覆盖登录成功的结果，仅记录提示
+                        android.util.Log.w("ImportViewModel", "课程保存失败", e)
+                        _progress.value = "课程已获取，但保存失败：${e.message ?: "未知错误"}"
+                    }
+
+                    // 自动回填学期设置（仅当用户尚未设置过开学日期）
+                    if (!res.semesterStart.isNullOrBlank() && appContainer.semesterStart.value.isBlank()) {
+                        appContainer.setSemesterStart(res.semesterStart!!)
+                        if (res.semesterWeeks != null && res.semesterWeeks!! in 1..60) {
+                            appContainer.setSemesterWeeks(res.semesterWeeks!!)
                         }
                     }
-                    repository.insertAll(newCourses)
                 }
             } catch (e: CancellationException) {
                 // ViewModel scope cancelled — ignore silently, this is normal
@@ -208,10 +294,12 @@ class ImportViewModel(
     class Factory(
         private val repository: CourseRepository,
         private val client: ZhengfangClient,
-        private val schoolRegistry: SchoolRegistry
+        private val qiangzhiClient: QiangZhiClient,
+        private val schoolRegistry: SchoolRegistry,
+        private val appContainer: AppContainer
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ImportViewModel(repository, client, schoolRegistry) as T
+            ImportViewModel(repository, client, qiangzhiClient, schoolRegistry, appContainer) as T
     }
 }

@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eggrice.timetable.TimetableApplication
 import com.eggrice.timetable.di.AppContainer
+import com.eggrice.timetable.util.currentWeekFrom
+import com.eggrice.timetable.util.parseSemesterStart
 import com.eggrice.timetable.ui.theme.*
 
 // ═══════════════════════════════════════════
@@ -147,7 +149,6 @@ internal fun SettingsMenuItem(
     subtitle: String,
     onClick: () -> Unit
 ) {
-    val isDark = LocalDarkMode.current
     val colors = LocalEggRiceColors.current
 
     Surface(
@@ -194,7 +195,6 @@ private fun SettingsSwitchItem(
     checked: Boolean,
     onToggle: () -> Unit
 ) {
-    val isDark = LocalDarkMode.current
     val colors = LocalEggRiceColors.current
 
     Surface(
@@ -252,51 +252,18 @@ fun SemesterSettingsPage(
     val context = LocalContext.current
 
     // Parse saved date into individual parts
-    val savedParts = remember(semesterStart) {
-        semesterStart.split("-").mapNotNull { it.toIntOrNull() }
-    }
+    val parsedStart = remember(semesterStart) { parseSemesterStart(semesterStart) }
     val now = java.time.LocalDate.now()
-    var year by remember { mutableIntStateOf(savedParts.getOrElse(0) { now.year }) }
-    var month by remember { mutableIntStateOf(savedParts.getOrElse(1) { 2 }) }
-    var day by remember { mutableIntStateOf(savedParts.getOrElse(2) { 1 }) }
+    var year by remember { mutableIntStateOf(parsedStart?.year ?: now.year) }
+    var month by remember { mutableIntStateOf(parsedStart?.monthValue ?: 2) }
+    var day by remember { mutableIntStateOf(parsedStart?.dayOfMonth ?: 1) }
 
     val colors = LocalEggRiceColors.current
     val editingStart = "$year-${String.format("%02d", month)}-${String.format("%02d", day)}"
     val autoWeek = remember(year, month, day, editingWeeks) {
         try {
-            val start = java.time.LocalDate.of(year, month, day)
-            val today = java.time.LocalDate.now()
-            val days = java.time.temporal.ChronoUnit.DAYS.between(start, today)
-            ((days / 7L).toInt() + 1).coerceIn(1, editingWeeks)
+            currentWeekFrom(java.time.LocalDate.of(year, month, day), editingWeeks)
         } catch (_: Exception) { container.autoCurrentWeek() }
-    }
-
-    // Track which control last changed to avoid feedback loops
-    var lastChangeSource by remember { mutableStateOf("init") }
-
-    // Quick week selector state — initialized from autoWeek
-    var quickWeek by remember { mutableIntStateOf(autoWeek) }
-
-    // When date fields change (from manual date picker), sync quickWeek
-    LaunchedEffect(year, month, day) {
-        if (lastChangeSource != "week") {
-            quickWeek = autoWeek
-        }
-        lastChangeSource = "date"
-    }
-
-    // Reverse-calculate semester start date from week number
-    fun applyWeekSelection(week: Int) {
-        if (week < 1 || week > editingWeeks) return
-        lastChangeSource = "week"
-        val today = java.time.LocalDate.now()
-        // Semester typically starts on a Monday — find Monday of the current week
-        val mondayOfThisWeek = today.minusDays(today.dayOfWeek.value.toLong() - 1)
-        // Week 1 starts at semesterStart; current week = week N means N-1 weeks have passed
-        val newStart = mondayOfThisWeek.minusWeeks((week - 1).toLong())
-        year = newStart.year
-        month = newStart.monthValue
-        day = newStart.dayOfMonth
     }
 
     Scaffold(
@@ -340,44 +307,12 @@ fun SemesterSettingsPage(
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("当前自动计算周次", fontSize = 13.sp, color = colors.textTertiary)
+                    Text("当前周次 · 由开学日期自动计算", fontSize = 13.sp, color = colors.textTertiary)
                     Text(
                         "第 $autoWeek 周",
                         fontSize = 28.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = colors.accentMain
-                    )
-                }
-            }
-
-            // Quick week selector — reverse-calculates semester start
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surfaceCard)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        "快捷设置当前周次",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = colors.textPrimary
-                    )
-                    Text(
-                        "选择后将自动推算学期开始日期（周一）",
-                        fontSize = 11.sp,
-                        color = colors.textTertiary
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    WheelPicker(
-                        value = quickWeek,
-                        onValueChange = { applyWeekSelection(it) },
-                        range = 1..editingWeeks,
-                        formatLabel = { "第${it}周" },
-                        modifier = Modifier.fillMaxWidth(0.5f)
                     )
                 }
             }
@@ -399,6 +334,12 @@ fun SemesterSettingsPage(
                         color = colors.textPrimary
                     )
                     Spacer(Modifier.height(12.dp))
+                    val daysInMonth = remember(year, month) {
+                        java.time.YearMonth.of(year, month).lengthOfMonth()
+                    }
+                    LaunchedEffect(daysInMonth) {
+                        if (day > daysInMonth) day = daysInMonth
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -421,7 +362,7 @@ fun SemesterSettingsPage(
                         WheelPicker(
                             value = day,
                             onValueChange = { day = it },
-                            range = 1..31,
+                            range = 1..daysInMonth,
                             formatLabel = { "${it}日" },
                             modifier = Modifier.weight(1f)
                         )
@@ -509,7 +450,6 @@ private fun DisplaySwitchItem(
     checked: Boolean,
     onToggle: () -> Unit
 ) {
-    val isDark = LocalDarkMode.current
     val colors = LocalEggRiceColors.current
 
     Surface(
@@ -577,6 +517,14 @@ private fun WheelPicker(
 
     LaunchedEffect(selected) {
         if (selected != value) onValueChange(selected)
+    }
+
+    // Sync scroll position when external value changes (e.g. date edit recalculates week)
+    LaunchedEffect(value) {
+        val target = items.indexOf(value)
+        if (target >= 0 && target != listState.firstVisibleItemIndex) {
+            listState.scrollToItem(target)
+        }
     }
 
     Box(

@@ -35,8 +35,8 @@ android {
         applicationId = "com.eggrice.timetable"
         minSdk = 29
         targetSdk = 34
-        versionCode = 122
-        versionName = "7.32"
+        versionCode = 180
+        versionName = "10.8"
         resourceConfigurations.addAll(listOf("zh-rCN", "zh"))
     }
 
@@ -118,4 +118,11 @@ dependencies {
 
     // Core
     implementation("androidx.core:core-ktx:1.13.1")
+
+    // Encrypted SharedPreferences
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Unit tests
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

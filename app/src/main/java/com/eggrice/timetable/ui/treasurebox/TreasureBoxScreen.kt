@@ -30,11 +30,15 @@ fun TreasureBoxScreen(
     schemeId: Long
 ) {
     val colors = LocalEggRiceColors.current
+    val tasks by repository.getTasksByScheme(schemeId).collectAsState(initial = emptyList())
+    val taskCompleted = tasks.count { it.completed }
+    val taskTotal = tasks.size
     var showLearningPage by remember { mutableStateOf(false) }
     var showFoodPage by remember { mutableStateOf(false) }
     var showTaskChecklist by remember { mutableStateOf(false) }
     var showGoodItemList by remember { mutableStateOf(false) }
     var showTreeHole by remember { mutableStateOf(false) }
+    var showTeacherLookup by remember { mutableStateOf(false) }
 
     if (showLearningPage) {
         LearningResourcePage(
@@ -68,6 +72,14 @@ fun TreasureBoxScreen(
             repository = repository,
             schemeId = schemeId,
             onBack = { showTreeHole = false }
+        )
+        return
+    }
+    if (showTeacherLookup) {
+        TeacherLookupScreen(
+            onBack = { showTeacherLookup = false },
+            repository = repository,
+            schemeId = schemeId
         )
         return
     }
@@ -122,7 +134,9 @@ fun TreasureBoxScreen(
             // ── Card 3: 大学任务清单 ──
             ToolCard(
                 title = "大学任务清单",
-                subtitle = "四六级、考研、驾照... 记录大学目标完成情况",
+                subtitle = if (taskTotal > 0)
+                    "${taskCompleted}/${taskTotal} 已完成" + if (taskCompleted >= taskTotal && taskTotal > 0) " 🎉" else ""
+                else "四六级、考研、驾照... 记录大学目标完成情况",
                 bgColor = Color(0xFF7AAC94),
                 onClick = { showTaskChecklist = true }
             )
@@ -141,6 +155,14 @@ fun TreasureBoxScreen(
                 subtitle = "把悄悄话放进树洞，匿名分享你的心事",
                 bgColor = Color(0xFF9A9080),
                 onClick = { showTreeHole = true }
+            )
+
+            // ── Card 6: 查询老师办公室 ──
+            ToolCard(
+                title = "查询老师办公室",
+                subtitle = "查看任课教师的办公地点和联系方式",
+                bgColor = Color(0xFF8B95A8),
+                onClick = { showTeacherLookup = true }
             )
         }
     }

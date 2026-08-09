@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.eggrice.timetable.data.entity.TaskEntity
 import com.eggrice.timetable.data.repository.CourseRepository
 import com.eggrice.timetable.ui.theme.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private val PRESET_TASKS = listOf(
@@ -54,9 +55,10 @@ fun TaskChecklistScreen(
     val tasks by repository.getTasksByScheme(schemeId).collectAsState(initial = emptyList())
     var showAddDialog by remember { mutableStateOf(false) }
 
-    // Initialize preset tasks on first load
+    // Initialize preset tasks on first load — use .first() to read real DB state
     LaunchedEffect(Unit) {
-        if (tasks.isEmpty()) {
+        val existing = repository.getTasksByScheme(schemeId).first()
+        if (existing.isEmpty()) {
             PRESET_TASKS.forEachIndexed { idx, name ->
                 repository.insertTask(TaskEntity(name = name, sortOrder = idx, schemeId = schemeId))
             }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -61,7 +62,7 @@ fun HomeworkListDialog(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            Icons.Outlined.Assignment,
+                            Icons.AutoMirrored.Outlined.Assignment,
                             null,
                             tint = colors.textTertiary.copy(alpha = 0.3f),
                             modifier = Modifier.size(64.dp)

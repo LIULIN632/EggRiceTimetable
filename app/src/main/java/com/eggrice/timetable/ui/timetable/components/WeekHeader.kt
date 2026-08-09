@@ -1,7 +1,6 @@
 package com.eggrice.timetable.ui.timetable.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -19,6 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eggrice.timetable.ui.theme.*
+import com.eggrice.timetable.util.parseSemesterStart
 import java.time.LocalDate
 
 @Composable
@@ -26,7 +26,6 @@ fun WeekHeader(
     currentWeek: Int,
     isCurrentWeek: Boolean = false,
     semesterStart: String = "",
-    onDayClick: (Int) -> Unit = {},
     onHomeworkClick: () -> Unit = {}
 ) {
     val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
@@ -34,17 +33,9 @@ fun WeekHeader(
     val todayDay = today.dayOfWeek.value
     val colors = LocalEggRiceColors.current
 
-    val weekMonday = if (semesterStart.isNotBlank()) {
-        try {
-            val parts = semesterStart.split("-")
-            LocalDate.of(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
-                .plusWeeks((currentWeek - 1).toLong())
-        } catch (_: Exception) {
-            today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong())
-        }
-    } else {
-        today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong())
-    }
+    val weekMonday = parseSemesterStart(semesterStart)
+        ?.plusWeeks((currentWeek - 1).toLong())
+        ?: today.plusDays((-(todayDay - 1) + (currentWeek - 1) * 7).toLong())
 
     Row(
         modifier = Modifier
@@ -82,7 +73,6 @@ fun WeekHeader(
                     .weight(1f)
                     .clip(RoundedCornerShape(24.dp))
                     .background(bgColor)
-                    .clickable { onDayClick(dayNum) }
                     .padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {

@@ -13,17 +13,26 @@ import com.eggrice.timetable.data.entity.TreeHoleEntity
 import com.eggrice.timetable.data.entity.SchemeEntity
 import com.eggrice.timetable.data.entity.TaskEntity
 import com.eggrice.timetable.data.entity.TimeSlotEntity
+import com.eggrice.timetable.data.entity.TeacherEntity
 import com.eggrice.timetable.data.dao.CourseDao
+import com.eggrice.timetable.data.dao.TeacherDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [CourseEntity::class, TimeSlotEntity::class, SchemeEntity::class, HomeworkEntity::class, TaskEntity::class, GoodItemEntity::class, TreeHoleEntity::class], version = 8, exportSchema = false)
+@Database(entities = [CourseEntity::class, TimeSlotEntity::class, SchemeEntity::class, HomeworkEntity::class, TaskEntity::class, GoodItemEntity::class, TreeHoleEntity::class, TeacherEntity::class], version = 10, exportSchema = false)
 abstract class TimetableDatabase : RoomDatabase() {
     abstract fun courseDao(): CourseDao
+    abstract fun teacherDao(): TeacherDao
 
     companion object {
         @Volatile private var INSTANCE: TimetableDatabase? = null
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // v1→v2: no schema change; ensures migration path is defined
+            }
+        }
 
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -66,6 +75,18 @@ abstract class TimetableDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS teachers (name TEXT PRIMARY KEY NOT NULL, office TEXT NOT NULL DEFAULT '', officeHours TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', lastUpdated INTEGER NOT NULL DEFAULT 0)")
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Reserved: edu_accounts table was planned but never used; keep migration path
+            }
+        }
+
         /** Ensure default scheme exists on fresh installs (DB created at v4, no migration runs). */
         private val CALLBACK = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -89,9 +110,8 @@ abstract class TimetableDatabase : RoomDatabase() {
         fun getInstance(context: Context): TimetableDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(context, TimetableDatabase::class.java, "timetable.db")
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     .addCallback(CALLBACK)
-                    .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }
             }
         }

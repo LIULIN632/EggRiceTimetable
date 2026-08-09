@@ -1,8 +1,9 @@
 package com.eggrice.timetable.data
 
 import android.content.Context
+import android.util.Log
 import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
+import com.google.gson.reflect.TypeToken
 import java.io.InputStreamReader
 
 enum class JwSystemType(val label: String, val description: String) {
@@ -22,7 +23,8 @@ data class School(
     val isV8: Boolean = true
 )
 
-fun isJwSystemAvailable(type: JwSystemType): Boolean = true
+fun isJwSystemAvailable(type: JwSystemType): Boolean =
+    type == JwSystemType.ZHENGFANG || type == JwSystemType.QIANGZHI
 
 private data class SchoolJson(
     val id: String,
@@ -30,38 +32,65 @@ private data class SchoolJson(
     val city: String,
     val jwType: String,
     val baseUrl: String,
-    val isV8: Boolean = true
+    val isV8: Boolean? = true
 )
 
-class SchoolRegistry(context: Context) {
-    // 从assets/schools.json加载学校列表，解析失败时用内置fallbackSchools兜底
-    val allSchools: List<School> by lazy {
+class SchoolRegistry(private val context: Context) {
+    // Load schools on demand by type from per-type JSON files
+    private val schoolsCache = mutableMapOf<JwSystemType, List<School>>()
+
+    fun getSchools(type: JwSystemType): List<School> = schoolsCache.getOrPut(type) {
         try {
-            val input = context.assets.open("schools.json")
-            val reader = InputStreamReader(input, Charsets.UTF_8)
-            val rawList = Gson().fromJson(reader, Array<SchoolJson>::class.java)
-            reader.close()
-            rawList.map { raw ->
+            val fileName = "schools_${type.name.lowercase()}.json"
+            val result = loadSchoolsFromJson(fileName).map { raw ->
                 School(
                     id = raw.id,
                     name = raw.name,
                     city = raw.city,
                     jwType = parseJwType(raw.jwType),
                     baseUrl = raw.baseUrl,
-                    isV8 = raw.isV8
+                    isV8 = raw.isV8 ?: true
                 )
             }
+            if (result.isNotEmpty()) {
+                Log.d("SchoolRegistry", "Loaded ${result.size} ${type.name} schools from $fileName")
+                result
+            } else {
+                throw IllegalStateException("File $fileName is empty")
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("SchoolRegistry", "Failed to load ${type.name} schools: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    private fun loadSchoolsFromJson(fileName: String): List<SchoolJson> {
+        val input = context.assets.open(fileName)
+        val reader = InputStreamReader(input, Charsets.UTF_8)
+        val result: List<SchoolJson> = Gson().fromJson(
+            reader,
+            object : TypeToken<List<SchoolJson>>() {}.type
+        )
+        reader.close()
+        return result
+    }
+
+    // Lazy load all schools for search/display (backwards compatibility)
+    val allSchools: List<School> by lazy {
+        val result = JwSystemType.values().flatMap { getSchools(it) }
+        if (result.isNotEmpty()) {
+            Log.d("SchoolRegistry", "Total schools: ${result.size}")
+            result
+        } else {
+            Log.w("SchoolRegistry", "All per-type files failed, using fallback")
             fallbackSchools
         }
     }
 
     fun filter(type: JwSystemType, query: String): List<School> {
         val q = query.trim()
-        return allSchools.filter {
-            it.jwType == type &&
-            (q.isEmpty() || it.name.contains(q, ignoreCase = true) || it.city.contains(q, ignoreCase = true))
+        return getSchools(type).filter {
+            q.isEmpty() || it.name.contains(q, ignoreCase = true) || it.city.contains(q, ignoreCase = true)
         }
     }
 
@@ -84,6 +113,12 @@ class SchoolRegistry(context: Context) {
             School("tongji", "同济大学", "上海", JwSystemType.ZHENGFANG, "https://jw.tongji.edu.cn/jwglxt"),
             School("jnu", "暨南大学", "广州", JwSystemType.ZHENGFANG, "https://jw.jnu.edu.cn/jwglxt"),
             School("suda", "苏州大学", "苏州", JwSystemType.ZHENGFANG, "https://jw.suda.edu.cn/jwglxt"),
+            School("fosu", "佛山大学", "佛山", JwSystemType.QIANGZHI, "https://jw.fosu.edu.cn"),
+            School("jxiust", "江西理工大学", "赣州", JwSystemType.QIANGZHI, "https://jw.jxust.edu.cn"),
+            School("gdpu", "广东药科大学", "广州", JwSystemType.QIANGZHI, "https://jw.gdpu.edu.cn"),
+            School("gdit", "广东科技学院", "东莞", JwSystemType.CHAOXING, "https://jw.gdit.edu.cn"),
+            School("hnswzy", "湖南商务职业技术学院", "长沙", JwSystemType.QINGGUO, "https://jw.hnswzy.com"),
+            School("sdnu", "山东师范大学", "济南", JwSystemType.URP, "https://jw.sdnu.edu.cn"),
         )
     }
 }

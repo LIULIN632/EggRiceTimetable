@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>蛋炒饭课程表</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        accent: '#4D8DFF',
+        'accent-light': '#6AA8FF',
+        'accent-soft': '#EAF4FF',
+        'surface': '#F8FAFC',
+        'surface-card': '#FFFFFF',
+        'text-primary': '#1F2937',
+        'text-secondary': '#8B95A7',
+        'text-tertiary': '#9CA3AF',
+        'border-color': '#EEEEEE',
+        'dog-bg': '#FFF3E0',
+      }
+    }
+  }
+}
+</script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #F0F0F0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+  }
+  .phone-frame {
+    width: 375px;
+    height: 812px;
+    background: #F8FAFC;
+    border-radius: 40px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 0 0 2px #1a1a1a;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Safe area */
+  .safe-top { padding-top: env(safe-area-inset-top, 0px); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+  /* Tap animation */
+  .tap-scale { transition: transform 0.15s ease; }
+  .tap-scale:active { transform: scale(0.92); }
+
+  /* Smooth transitions */
+  .day-pill { transition: all 0.2s ease; }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Custom scrollbar */
+  .course-grid::-webkit-scrollbar { width: 0; }
+
+  /* Fab bounce */
+  .fab-bounce { animation: fabBounce 0.4s ease; }
+  @keyframes fabBounce {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.15); }
+    60% { transform: scale(0.9); }
+    100% { transform: scale(1); }
+  }
+
+  /* Bubble pop */
+  .bubble-pop { animation: bubblePop 0.3s ease; }
+  @keyframes bubblePop {
+    0% { opacity: 0; transform: scale(0.8) translateY(4px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Tab indicator slide */
+  .tab-indicator { transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+</style>
+</head>
+<body>
+
+<div class="phone-frame">
+  <!-- ═══ Status Bar ═══ -->
+  <div class="bg-surface safe-top flex items-center justify-between px-6 pt-3 pb-1">
+    <span class="text-xs font-semibold text-text-primary" style="font-size: 14px;">9:41</span>
+    <div class="flex items-center gap-1">
+      <svg width="16" height="11" viewBox="0 0 16 11"><rect x="0" y="0" width="13" height="10" rx="2" stroke="#1F2937" stroke-width="1.2" fill="none"/><rect x="2" y="2" width="2.5" height="6" rx="0.5" fill="#1F2937"/><rect x="5.5" y="2" width="2.5" height="6" rx="0.5" fill="#1F2937"/><rect x="9" y="2" width="2.5" height="6" rx="0.5" fill="#1F2937"/><rect x="13.5" y="3.5" width="2" height="3" rx="1" fill="#1F2937"/></svg>
+    </div>
+  </div>
+
+  <!-- ═══ Top Bar ═══ -->
+  <div class="bg-surface-card px-3 py-2 flex items-center justify-between border-b border-border-color">
+    <div class="tap-scale cursor-pointer px-1" onclick="toggleSemester()" id="weekBlock">
+      <div class="text-lg font-semibold text-text-primary leading-tight" id="weekTitle">第12周</div>
+      <div class="text-xs text-text-tertiary" id="weekRange">6/1 - 6/7</div>
+    </div>
+    <div class="flex items-center gap-0.5">
+      <button class="tap-scale w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100" onclick="prevWeek()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4D8DFF" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <button id="todayBtn" class="tap-scale h-[26px] px-2.5 rounded-[13px] text-[11px] font-bold bg-accent-soft text-accent" onclick="goToToday()">今天</button>
+      <button class="tap-scale w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100" onclick="nextWeek()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4D8DFF" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ Week Date Header ═══ -->
+  <div class="bg-surface-card flex items-center px-1 py-1.5 border-b border-border-color" id="weekHeader">
+    <button class="tap-scale w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0" onclick="alert('作业列表')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>
+    </button>
+    <div class="flex-1 flex gap-0.5" id="dayPills"><!-- JS fills --></div>
+  </div>
+
+  <!-- ═══ Main Content ═══ -->
+  <div class="flex-1 relative overflow-hidden" id="mainContent">
+    <!-- Empty State -->
+    <div class="absolute inset-0 flex flex-col items-center justify-center fade-in" id="emptyState">
+      <div class="w-[120px] h-[120px] rounded-full flex items-center justify-center" style="background: rgba(255,243,224,0.6);">
+        <span style="font-size: 56px;">🐶</span>
+      </div>
+      <div class="mt-6 text-lg font-semibold text-text-primary">还没有课程哦～</div>
+      <div class="mt-2 text-sm text-text-secondary">点击右下角添加课程吧</div>
+      <button class="tap-scale mt-7 w-40 h-[52px] bg-accent text-white font-semibold text-base rounded-[28px]" onclick="addSampleCourses()">
+        + 添加课程
+      </button>
+    </div>
+
+    <!-- Course Grid (hidden by default) -->
+    <div class="absolute inset-0 flex-col hidden" id="courseGrid">
+      <div class="flex-1 overflow-y-auto course-grid p-1.5" id="courseGridInner"><!-- JS fills --></div>
+    </div>
+  </div>
+
+  <!-- ═══ Pet FAB + Bubble ═══ -->
+  <div class="absolute bottom-24 right-4 z-20 flex flex-col items-end" style="pointer-events: none;">
+    <div id="petBubble" class="bg-white rounded-2xl px-3 py-2 mb-1.5 shadow-lg text-xs text-text-primary max-w-[180px] hidden bubble-pop" style="pointer-events: auto; border-bottom-right-radius: 4px;">
+      <span id="petBubbleText">汪！摸摸头～</span>
+    </div>
+    <div id="petFab" class="tap-scale w-[52px] h-[52px] rounded-full bg-white shadow-lg flex items-center justify-center cursor-pointer relative" style="pointer-events: auto;" onclick="petClick()">
+      <span style="font-size: 28px;">🐶</span>
+      <div id="petBadge" class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center hidden">0</div>
+    </div>
+  </div>
+
+  <!-- ═══ Bottom Tab Bar ═══ -->
+  <div class="bg-surface-card border-t border-border-color safe-bottom flex" id="tabBar">
+    <div class="flex-1 flex flex-col items-center py-1.5 tap-scale cursor-pointer tab-active" data-tab="timetable" onclick="switchTab('timetable')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4D8DFF" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>
+      <span class="text-[10px] mt-0.5 text-accent font-medium">课程表</span>
+    </div>
+    <div class="flex-1 flex flex-col items-center py-1.5 tap-scale cursor-pointer" data-tab="homework" onclick="switchTab('homework')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>
+      <span class="text-[10px] mt-0.5 text-text-tertiary font-medium">作业</span>
+    </div>
+    <div class="flex-1 flex flex-col items-center py-1.5 tap-scale cursor-pointer" data-tab="stats" onclick="switchTab('stats')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+      <span class="text-[10px] mt-0.5 text-text-tertiary font-medium">统计</span>
+    </div>
+    <div class="flex-1 flex flex-col items-center py-1.5 tap-scale cursor-pointer" data-tab="profile" onclick="switchTab('profile')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      <span class="text-[10px] mt-0.5 text-text-tertiary font-medium">我的</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══ State ═══
+const weekdays = ['周一','周二','周三','周四','周五','周六','周日'];
+const today = new Date();
+const todayDay = today.getDay() || 7; // 1=Mon, 7=Sun
+let currentWeek = 12; // demo week number
+let hasCourses = false;
+let courses = [];
+const petMessages = [
+  '记得多喝水哦～', '休息一下，看看远处吧', '今天也要加油！',
+  '准备上课啦～', '汪！摸摸头～', '吃饭要吃饱哦！',
+  '天冷了记得加衣服～', '你是最棒的！'
+];
+
+// ═══ Init ═══
+function init() {
+  renderDayPills();
+  updateWeekInfo();
+  updateTodayButton();
+}
+
+function getWeekMonday() {
+  const d = new Date(today);
+  d.setDate(d.getDate() - ((todayDay - 1)) + (currentWeek - 12) * 7);
+  return d;
+}
+
+function renderDayPills() {
+  const monday = getWeekMonday();
+  const isCurrentWeek = currentWeek === 12; // demo: week 12 is current
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const dayNum = i + 1;
+    const isToday = isCurrentWeek && dayNum === todayDay;
+    html += `
+      <div class="flex-1 flex flex-col items-center py-1.5 rounded-[24px] cursor-pointer tap-scale day-pill ${isToday ? 'bg-accent' : ''}" onclick="selectDay(${dayNum})" data-day="${dayNum}">
+        <span class="text-[13px] font-medium ${isToday ? 'text-white/85' : 'text-text-tertiary'}">${weekdays[i]}</span>
+        <span class="text-[13px] font-medium ${isToday ? 'text-white' : 'text-text-primary'}">${d.getDate()}</span>
+      </div>`;
+  }
+  document.getElementById('dayPills').innerHTML = html;
+}
+
+function selectDay(day) {
+  const isCurrentWeek = currentWeek === 12;
+  document.querySelectorAll('#dayPills .day-pill').forEach(el => {
+    const d = parseInt(el.dataset.day);
+    const isToday = isCurrentWeek && d === todayDay;
+    const selected = d === day && !isToday;
+    el.classList.remove('bg-accent', 'bg-accent-soft');
+    const label = el.querySelector('span:first-child');
+    const date = el.querySelector('span:last-child');
+    if (d === day) {
+      if (isToday) {
+        el.classList.add('bg-accent');
+        label.className = 'text-[13px] font-medium text-white/85';
+        date.className = 'text-[13px] font-medium text-white';
+      } else {
+        el.classList.add('bg-accent');
+        label.className = 'text-[13px] font-medium text-white/85';
+        date.className = 'text-[13px] font-medium text-white';
+      }
+    } else if (isToday && d === todayDay) {
+      el.classList.add('bg-accent');
+      label.className = 'text-[13px] font-medium text-white/85';
+      date.className = 'text-[13px] font-medium text-white';
+    } else {
+      el.classList.remove('bg-accent');
+      label.className = 'text-[13px] font-medium text-text-tertiary';
+      date.className = 'text-[13px] font-medium text-text-primary';
+    }
+  });
+  if (hasCourses) filterCoursesByDay(day);
+}
+
+function filterCoursesByDay(day) {
+  // re-render course grid filtered
+  renderCourseGrid(day);
+}
+
+function updateWeekInfo() {
+  const monday = getWeekMonday();
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  document.getElementById('weekTitle').textContent = `第${currentWeek}周`;
+  document.getElementById('weekRange').textContent = `${monday.getMonth()+1}/${monday.getDate()} - ${sunday.getMonth()+1}/${sunday.getDate()}`;
+}
+
+function updateTodayButton() {
+  const isCurrent = currentWeek === 12;
+  const btn = document.getElementById('todayBtn');
+  if (isCurrent) {
+    btn.className = 'tap-scale h-[26px] px-2.5 rounded-[13px] text-[11px] font-bold bg-accent-soft text-accent';
+  } else {
+    btn.className = 'tap-scale h-[26px] px-2.5 rounded-[13px] text-[11px] font-bold bg-accent text-white';
+  }
+}
+
+function prevWeek() { currentWeek--; refreshWeek(); }
+function nextWeek() { currentWeek++; refreshWeek(); }
+function goToToday() { currentWeek = 12; refreshWeek(); }
+
+function refreshWeek() {
+  renderDayPills();
+  updateWeekInfo();
+  updateTodayButton();
+  if (hasCourses) {
+    renderCourseGrid();
+  }
+}
+
+function toggleSemester() {
+  alert('学期设置 (第' + currentWeek + '周)');
+}
+
+// ═══ FAB ═══
+let bubbleTimer = null;
+function petClick() {
+  const fab = document.getElementById('petFab');
+  fab.classList.remove('fab-bounce');
+  void fab.offsetWidth;
+  fab.classList.add('fab-bounce');
+  showBubble(petMessages[Math.floor(Math.random() * petMessages.length)]);
+}
+
+function showBubble(msg) {
+  const bubble = document.getElementById('petBubble');
+  const text = document.getElementById('petBubbleText');
+  text.textContent = msg;
+  bubble.classList.remove('hidden', 'bubble-pop');
+  void bubble.offsetWidth;
+  bubble.classList.add('bubble-pop');
+  if (bubbleTimer) clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => { bubble.classList.add('hidden'); }, 2500);
+}
+
+// ═══ Tab Bar ═══
+function switchTab(tab) {
+  document.querySelectorAll('#tabBar > div').forEach(el => {
+    const isActive = el.dataset.tab === tab;
+    const svg = el.querySelector('svg');
+    const span = el.querySelector('span');
+    if (isActive) {
+      svg.setAttribute('stroke', '#4D8DFF');
+      span.className = 'text-[10px] mt-0.5 text-accent font-medium';
+    } else {
+      svg.setAttribute('stroke', '#9CA3AF');
+      span.className = 'text-[10px] mt-0.5 text-text-tertiary font-medium';
+    }
+  });
+  if (tab !== 'timetable') {
+    alert({
+      homework: '作业列表 — 开发中',
+      stats: '统计页面 — 开发中',
+      profile: '我的页面 — 开发中'
+    }[tab]);
+  }
+}
+
+// ═══ Sample Courses ═══
+const courseColors = [
+  { bg: '#FFE8E5', text: '#8B5A5E', border: '#F0C8C4' },
+  { bg: '#DEE8FF', text: '#4A5C82', border: '#BBC8EE' },
+  { bg: '#D8F0E2', text: '#4A6C56', border: '#B8D8C2' },
+  { bg: '#EDE2F8', text: '#584A78', border: '#D4C8E8' },
+  { bg: '#FFEAD6', text: '#826448', border: '#F0D0B0' },
+  { bg: '#FFDEE0', text: '#824E50', border: '#F0C0C2' },
+  { bg: '#D6EDF2', text: '#486A80', border: '#B4D4DE' },
+];
+
+const sampleCourses = [
+  { name: '高等数学', room: '教学楼A301', teacher: '王教授', day: 1, start: 1, end: 2, color: 0 },
+  { name: '大学英语', room: '教学楼B205', teacher: '李老师', day: 2, start: 3, end: 4, color: 1 },
+  { name: '数据结构', room: '实验楼C102', teacher: '张教授', day: 3, start: 1, end: 3, color: 2 },
+  { name: '马克思主义原理', room: '文科楼D401', teacher: '赵老师', day: 1, start: 6, end: 7, color: 3 },
+  { name: '体育课', room: '体育馆', teacher: '陈教练', day: 4, start: 3, end: 4, color: 4 },
+  { name: '线性代数', room: '教学楼A201', teacher: '刘教授', day: 5, start: 1, end: 2, color: 5 },
+  { name: '编程实践', room: '机房E101', teacher: '周老师', day: 2, start: 6, end: 7, color: 6 },
+  { name: '大学物理', room: '理学院F301', teacher: '吴教授', day: 3, start: 6, end: 7, color: 0 },
+];
+
+const timeSlots = ['08:00', '08:55', '10:00', '10:55', '14:00', '14:55', '16:00', '16:55', '19:00', '19:55'];
+
+function addSampleCourses() {
+  hasCourses = true;
+  courses = [...sampleCourses];
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('courseGrid').classList.remove('hidden');
+  document.getElementById('courseGrid').classList.add('flex');
+  renderCourseGrid();
+  showBubble('课程已添加～点击卡片可编辑');
+}
+
+function editCourseInfo(name, teacher, room) {
+  alert('编辑课程: ' + name + '\n教师: ' + teacher + '\n教室: ' + room);
+}
+
+function renderCourseGrid(dayFilter = 0) {
+  const grid = document.getElementById('courseGridInner');
+  const maxSlot = 10;
+  const numDays = 7;
+
+  let html = '<table class="w-full border-separate" style="border-spacing: 1px;">';
+
+  // Header row
+  html += '<tr>';
+  html += '<th class="w-9"></th>';
+  for (let d = 1; d <= numDays; d++) {
+    const isTodayCol = currentWeek === 12 && d === todayDay;
+    html += `<th class="h-6 text-[11px] font-medium ${isTodayCol ? 'text-accent' : 'text-text-tertiary'}">${weekdays[d-1]}</th>`;
+  }
+  html += '</tr>';
+
+  // Time slot rows
+  for (let slot = 1; slot <= maxSlot; slot++) {
+    html += '<tr>';
+    const time = timeSlots[slot - 1] || '';
+    html += `<td class="w-9 text-[9px] text-text-tertiary align-top text-right pr-1 pt-0.5">${time}</td>`;
+
+    for (let d = 1; d <= numDays; d++) {
+      const course = courses.find(c => c.day === d && c.start <= slot && c.end >= slot);
+      if (course) {
+        if (course.start === slot) {
+          const span = course.end - course.start + 1;
+          const c = courseColors[course.color % courseColors.length];
+          html += `<td rowspan="${span}" class="rounded-lg px-1.5 py-0.5 cursor-pointer tap-scale fade-in align-top" style="background: ${c.bg}; border: 1px solid ${c.border};" onclick="editCourseInfo('${course.name}','${course.teacher}','${course.room}')">
+            <div class="text-[10px] font-semibold" style="color: ${c.text}; line-height: 1.3;">${course.name}</div>
+            <div class="text-[8px]" style="color: ${c.text}; opacity: 0.7; line-height: 1.2;">${course.room}</div>
+          </td>`;
+        }
+      } else if (!courses.some(c => c.day === d && c.start < slot && c.end >= slot)) {
+        html += `<td class="min-h-[38px] rounded-md cursor-pointer tap-scale" onclick="alert('添加课程: ${weekdays[d-1]} 第${slot}节')"></td>`;
+      }
+    }
+    html += '</tr>';
+  }
+
+  html += '</table>';
+  grid.innerHTML = html;
+}
+
+// ═══ Start ═══
+init();
+</script>
+
+</body>
+</html>

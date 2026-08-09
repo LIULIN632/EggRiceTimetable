@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +25,7 @@ import com.eggrice.timetable.TimetableApplication
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.entity.SchemeEntity
 import com.eggrice.timetable.ui.import_.ImportScreen
+import com.eggrice.timetable.ui.import_.PdfImportScreen
 import com.eggrice.timetable.ui.import_.WebImportScreen
 import com.eggrice.timetable.ui.profile.components.*
 import com.eggrice.timetable.ui.treasurebox.TreasureBoxScreen
@@ -31,6 +34,7 @@ import com.eggrice.timetable.ui.theme.*
 import com.eggrice.timetable.util.CalendarExportUtil
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,7 +65,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showSchoolRequestDialog by remember { mutableStateOf(false) }
     var showShareExportDialog by remember { mutableStateOf(false) }
-    var showAppearanceDialog by remember { mutableStateOf(false) }
+    var showAppearance by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showImportMenu by remember { mutableStateOf(false) }
     var showJwImportSub by remember { mutableStateOf(false) }
@@ -71,22 +75,31 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showFeatureToggles by remember { mutableStateOf(false) }
     var showImportScreen by remember { mutableStateOf(false) }
     var showWebImportScreen by remember { mutableStateOf(false) }
+    var webImportSession by remember { mutableIntStateOf(0) }
+    var showPdfImportScreen by remember { mutableStateOf(false) }
     var freeImportMode by remember { mutableStateOf(false) }
     var showTreasureBoxDialog by remember { mutableStateOf(false) }
     var showSchemeManager by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
     var showSkinSettings by remember { mutableStateOf(false) }
+    var showRewardQr by remember { mutableStateOf(false) }
 
     // ── Settings sub-page states ──
     var showSettingsMain by remember { mutableStateOf(false) }
     var showTimeSlotManagement by remember { mutableStateOf(false) }
     var showSemesterSettings by remember { mutableStateOf(false) }
 
+    // 设置子页面/对话框的返回目标：true=通用设置，false=课表管理设置
+    var settingsParentIsGeneral by remember { mutableStateOf(false) }
+    fun backToSettingsParent() {
+        if (settingsParentIsGeneral) showGeneralSettings = true else showSettingsMain = true
+    }
+
     // Sub-page visibility tracking — hide bottom nav + handle system back
     // Includes dialog states so system back can dismiss dialogs properly
-    val hasSubPage = showImportScreen || showWebImportScreen || showTreasureBoxDialog
+    val hasSubPage = showImportScreen || showWebImportScreen || showPdfImportScreen || showTreasureBoxDialog
             || showSettingsMain || showTimeSlotManagement || showSemesterSettings || showChangelog
-            || showFeatureToggles || showGeneralSettings || showAppearanceDialog
+            || showFeatureToggles || showGeneralSettings || showAppearance
             || showSkinSettings
             || showImportMenu || showJwImportSub || showFileImportSub || showShareMenu
 
@@ -97,16 +110,17 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             // Sub-pages → go back to parent dialog/menu
             showImportScreen -> { showImportScreen = false; showImportMenu = true }
             showWebImportScreen -> { showWebImportScreen = false; freeImportMode = false; showImportMenu = true }
+            showPdfImportScreen -> { showPdfImportScreen = false; showImportMenu = true }
             showTreasureBoxDialog -> showTreasureBoxDialog = false
-            // Settings sub-pages
+            // Settings sub-pages → back to parent settings page
+            showTimeSlotManagement -> { showTimeSlotManagement = false; backToSettingsParent() }
+            showSemesterSettings -> { showSemesterSettings = false; backToSettingsParent() }
+            showAppearance -> { showAppearance = false; backToSettingsParent() }
+            showFeatureToggles -> { showFeatureToggles = false; backToSettingsParent() }
+            showSkinSettings -> { showSkinSettings = false; backToSettingsParent() }
             showSettingsMain -> showSettingsMain = false
-            showTimeSlotManagement -> showTimeSlotManagement = false
-            showSemesterSettings -> showSemesterSettings = false
-            showChangelog -> showChangelog = false
-            showFeatureToggles -> showFeatureToggles = false
             showGeneralSettings -> showGeneralSettings = false
-            showAppearanceDialog -> showAppearanceDialog = false
-            showSkinSettings -> showSkinSettings = false
+            showChangelog -> showChangelog = false
             // Sub-dialogs → back to ImportMenu
             showJwImportSub -> { showJwImportSub = false; showImportMenu = true }
             showFileImportSub -> { showFileImportSub = false; showImportMenu = true }
@@ -117,13 +131,23 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     }
 
     if (showImportScreen) {
-        ImportScreen(onBack = { showImportScreen = false; showImportMenu = true })
+        ImportScreen(
+            onBack = { showImportScreen = false; showImportMenu = true },
+            onGoSettings = { showImportScreen = false; showGeneralSettings = true }
+        )
         return
     }
     if (showWebImportScreen) {
         WebImportScreen(
             onBack = { showWebImportScreen = false; freeImportMode = false; showImportMenu = true },
-            freeMode = freeImportMode
+            freeMode = freeImportMode,
+            sessionKey = webImportSession
+        )
+        return
+    }
+    if (showPdfImportScreen) {
+        PdfImportScreen(
+            onBack = { showPdfImportScreen = false; showImportMenu = true }
         )
         return
     }
@@ -158,20 +182,20 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
         SettingsMainScreen(
             container = container,
             onBack = { showSettingsMain = false },
-            onTimeSlotManagement = { showSettingsMain = false; showTimeSlotManagement = true },
-            onAppearance = { showSettingsMain = false; showAppearanceDialog = true },
-            onSemesterSettings = { showSettingsMain = false; showSemesterSettings = true },
-            onReminderTime = { showSettingsMain = false; showReminderTimeDialog = true },
-            onVibrationMode = { showSettingsMain = false; showVibrationModeDialog = true }
+            onTimeSlotManagement = { showSettingsMain = false; settingsParentIsGeneral = false; showTimeSlotManagement = true },
+            onAppearance = { showSettingsMain = false; settingsParentIsGeneral = false; showAppearance = true },
+            onSemesterSettings = { showSettingsMain = false; settingsParentIsGeneral = false; showSemesterSettings = true },
+            onReminderTime = { showSettingsMain = false; settingsParentIsGeneral = false; showReminderTimeDialog = true },
+            onVibrationMode = { showSettingsMain = false; settingsParentIsGeneral = false; showVibrationModeDialog = true }
         )
         return
     }
     if (showTimeSlotManagement) {
-        TimeSlotManagementScreen(onBack = { showTimeSlotManagement = false })
+        TimeSlotManagementScreen(onBack = { showTimeSlotManagement = false; backToSettingsParent() })
         return
     }
     if (showSemesterSettings) {
-        SemesterSettingsPage(container = container, onBack = { showSemesterSettings = false })
+        SemesterSettingsPage(container = container, onBack = { showSemesterSettings = false; backToSettingsParent() })
         return
     }
     if (showChangelog) {
@@ -180,47 +204,51 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     }
     val nickname by container.nickname.collectAsState()
     val school by container.school.collectAsState()
-    val showTeacher by container.showTeacher.collectAsState()
-    val showRoom by container.showRoom.collectAsState()
-    val showCampus by container.showCampus.collectAsState()
-    val showSlotTime by container.showSlotTime.collectAsState()
     val cornerRadius by container.cornerRadius.collectAsState()
     val colorTheme by container.colorTheme.collectAsState()
     val darkMode by container.darkMode.collectAsState()
     val reminderEnabled by container.reminderEnabled.collectAsState()
     val reminderMinutes by container.reminderMinutes.collectAsState()
     val vibrationMode by container.vibrationMode.collectAsState()
-    val showOddEven by container.showOddEven.collectAsState()
     val autoUpdate by container.autoUpdate.collectAsState()
-    val showDashedBorder by container.showDashedBorder.collectAsState()
-    val textCentered by container.textCentered.collectAsState()
-    val gridHeight by container.gridHeight.collectAsState()
-    val gridOpacity by container.gridOpacity.collectAsState()
-    val gridTextSize by container.gridTextSize.collectAsState()
     val borderStyle by container.borderStyle.collectAsState()
     val petIndex by container.petIndex.collectAsState()
     val petName by container.petName.collectAsState()
-    val showNonCurrentWeek by container.showNonCurrentWeek.collectAsState()
-    val gridBgColor by container.gridBgColor.collectAsState()
-    val otherWeekAlpha by container.otherWeekAlpha.collectAsState()
-    val wallpaperUri by container.wallpaperUri.collectAsState()
     val skin by container.skin.collectAsState()
     val showTreasureBox by container.showTreasureBox.collectAsState()
     val showWidget by container.showWidget.collectAsState()
+    val showDonate by container.showDonate.collectAsState()
     val allSchemes by app.repository.allSchemes.collectAsState(emptyList())
     val activeSchemeId by container.activeSchemeId.collectAsState()
     val allTasks by app.repository.getTasksByScheme(activeSchemeId).collectAsState(emptyList())
+    val allHomework by app.repository.getAllHomework().collectAsState(initial = emptyList())
+    val unfinishedHomeworkCount by remember(allHomework, activeSchemeId) {
+        derivedStateOf { allHomework.count { (it.schemeId == activeSchemeId || it.schemeId == 0L) && !it.completed } }
+    }
+
+    // Companion days since first launch
+    val prefs = remember { context.getSharedPreferences("egg_rice_prefs", android.content.Context.MODE_PRIVATE) }
+    val daysCompanion = remember {
+        val first = prefs.getLong("first_launch_time", 0L)
+        if (first == 0L) {
+            prefs.edit().putLong("first_launch_time", System.currentTimeMillis()).apply()
+            1
+        } else {
+            val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - first).toInt()
+            days.coerceAtLeast(1)
+        }
+    }
 
     val colors = LocalEggRiceColors.current
 
     // ── File pickers ──
     val excelLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> uri?.let { importFromUri(context, app, uri, "excel") } }
+    ) { uri -> uri?.let { importFromUri(context, app, uri, "excel", container.activeSchemeId.value) } }
 
     val htmlLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> uri?.let { importFromUri(context, app, uri, "html") } }
+    ) { uri -> uri?.let { importFromUri(context, app, uri, "html", container.activeSchemeId.value) } }
 
     val backupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -234,7 +262,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
 
     val csvImportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> uri?.let { importFromUri(context, app, uri, "excel") } }
+    ) { uri -> uri?.let { importFromUri(context, app, uri, "csv", container.activeSchemeId.value) } }
 
     val backupExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -337,12 +365,12 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             colorTheme = colorTheme,
             borderStyle = borderStyle,
             onBack = { showGeneralSettings = false },
-            onDarkMode = { showGeneralSettings = false; showDarkModeDialog = true },
-            onVibrationMode = { showGeneralSettings = false; showVibrationModeDialog = true },
-            onColorTheme = { showGeneralSettings = false; showColorThemeDialog = true },
-            onFeatureToggles = { showGeneralSettings = false; showFeatureToggles = true },
+            onDarkMode = { showGeneralSettings = false; settingsParentIsGeneral = true; showDarkModeDialog = true },
+            onVibrationMode = { showGeneralSettings = false; settingsParentIsGeneral = true; showVibrationModeDialog = true },
+            onColorTheme = { showGeneralSettings = false; settingsParentIsGeneral = true; showColorThemeDialog = true },
+            onFeatureToggles = { showGeneralSettings = false; settingsParentIsGeneral = true; showFeatureToggles = true },
             onImportToCalendar = onImportToCalendar,
-            onSkin = { showGeneralSettings = false; showSkinSettings = true },
+            onSkin = { showGeneralSettings = false; settingsParentIsGeneral = true; showSkinSettings = true },
             skin = skin,
             onBorderStyle = { container.setBorderStyle(it) }
         )
@@ -355,7 +383,8 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             showWidget = showWidget,
             reminderEnabled = reminderEnabled,
             autoUpdate = autoUpdate,
-            onBack = { showFeatureToggles = false }
+            showDonate = showDonate,
+            onBack = { showFeatureToggles = false; backToSettingsParent() }
         )
         return
     }
@@ -363,28 +392,14 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
         SkinSettingsScreen(
             skin = skin,
             onSelectSkin = { container.setSkin(it) },
-            onBack = { showSkinSettings = false }
+            onBack = { showSkinSettings = false; backToSettingsParent() }
         )
         return
     }
-    if (showAppearanceDialog) {
+    if (showAppearance) {
         AppearanceScreen(
             container = container,
-            showTeacher = showTeacher,
-            showRoom = showRoom,
-            showCampus = showCampus,
-            showSlotTime = showSlotTime,
-            borderStyle = borderStyle,
-            textCentered = textCentered,
-            gridHeight = gridHeight,
-            gridOpacity = gridOpacity,
-            gridTextSize = gridTextSize,
-            showNonCurrentWeek = showNonCurrentWeek,
-            showOddEven = showOddEven,
-            gridBgColor = gridBgColor,
-            otherWeekAlpha = otherWeekAlpha,
-            wallpaperUri = wallpaperUri,
-            onBack = { showAppearanceDialog = false }
+            onBack = { showAppearance = false; backToSettingsParent() }
         )
         return
     }
@@ -392,37 +407,38 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Surface)
+            .background(PageBg)
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 16.dp)
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ━━━━ V2: PetCard (combines profile + pet) ━━━━
+            // ━━━━ V3: PetCard ━━━━
             item {
                 PetCard(
                     nickname = nickname,
                     school = school,
                     petIndex = petIndex,
                     petName = petName,
+                    daysCompanion = daysCompanion,
                     onEditNickname = { showNicknameDialog = true },
                     onPetClick = { showPetDialog = true }
                 )
             }
 
-            // ━━━━ V2: ReminderCard ━━━━
+            // ━━━━ V3: ReminderCard ━━━━
             item {
                 ReminderCard(
-                    unfinishedCount = allTasks.count { !it.completed },
+                    unfinishedCount = unfinishedHomeworkCount,
                     onGoComplete = {
-                        Toast.makeText(context, "请切换到课程页查看待办事项", Toast.LENGTH_SHORT).show()
+                        container.requestShowHomework()
+                        onBack()
                     }
                 )
             }
 
-            item { SpacerH(6) }
-
-            // ━━━━ V2: QuickActionGrid 2×2 ━━━━
+            // ━━━━ V3: QuickActionGrid 2×2 ━━━━
             item {
                 QuickActionGrid(
                     onImport = { showImportMenu = true },
@@ -432,54 +448,96 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                 )
             }
 
-            item { SpacerH(12) }
+            // ━━━━ V3: More features section ━━━━
+            item { MoreFeaturesHeader() }
 
-            // ━━━━ Bottom area ━━━━
-            item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = Divider) }
             item {
-                ArrowRow("课表管理", "管理你的多张课表") {
-                    showSchemeManager = true
-                }
+                FeatureRow(
+                    icon = Icons.AutoMirrored.Filled.ListAlt,
+                    title = "课表管理",
+                    subtitle = "管理你的多张课表",
+                    onClick = { showSchemeManager = true }
+                )
             }
             if (showTreasureBox) {
                 item {
-                    ArrowRow("百宝箱", "学习资源 · 今天吃什么") {
-                        showTreasureBoxDialog = true
-                    }
+                    FeatureRow(
+                        icon = Icons.Filled.CardGiftcard,
+                        title = "百宝箱",
+                        subtitle = "学习资源 · 今天吃什么",
+                        onClick = { showTreasureBoxDialog = true }
+                    )
                 }
             }
             item {
-                ArrowRow("清理浏览器缓存", "清理教务登录缓存和Cookie") {
-                    val wv = android.webkit.WebView(context)
-                    wv.clearCache(true)
-                    wv.destroy()
-                    android.webkit.CookieManager.getInstance().removeAllCookies(null)
-                    Toast.makeText(context, "浏览器缓存已清理", Toast.LENGTH_SHORT).show()
-                }
+                FeatureRow(
+                    icon = Icons.Filled.DeleteSweep,
+                    title = "清理缓存",
+                    subtitle = "清理教务登录缓存和Cookie",
+                    onClick = {
+                        val wv = android.webkit.WebView(context)
+                        wv.clearCache(true)
+                        wv.destroy()
+                        android.webkit.CookieManager.getInstance().removeAllCookies(null)
+                        Toast.makeText(context, "浏览器缓存已清理", Toast.LENGTH_SHORT).show()
+                    }
+                )
             }
             item {
-                ArrowRow("导出崩溃日志") {
-                    val hasLog = app.crashHandler.getLatestCrashLog() != null
-                    if (hasLog) {
-                        crashExportLauncher.launch("crash_log_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.txt")
-                    } else {
-                        Toast.makeText(context, "暂无崩溃日志", Toast.LENGTH_SHORT).show()
+                FeatureRow(
+                    icon = Icons.Filled.BugReport,
+                    title = "导出日志",
+                    subtitle = "导出崩溃日志用于反馈",
+                    onClick = {
+                        val hasLog = app.crashHandler.getLatestCrashLog() != null
+                        if (hasLog) {
+                            crashExportLauncher.launch("crash_log_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.txt")
+                        } else {
+                            Toast.makeText(context, "暂无崩溃日志", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                }
+                )
             }
             if (autoUpdate) {
                 item {
-                    ArrowRow("检查更新") { showUpdateDialog = true }
+                    FeatureRow(
+                        icon = Icons.Filled.SystemUpdate,
+                        title = "检查更新",
+                        onClick = { showUpdateDialog = true }
+                    )
+                }
+            }
+            if (showDonate) {
+                item {
+                    FeatureRow(
+                        icon = Icons.Filled.Favorite,
+                        title = "支持开发者",
+                        subtitle = "如果帮到了你，请开发者喝杯奶茶",
+                        onClick = { showRewardQr = true }
+                    )
                 }
             }
             item {
-                ArrowRow("更新日志", "版本更新记录") { showChangelog = true }
+                FeatureRow(
+                    icon = Icons.Filled.History,
+                    title = "更新日志",
+                    subtitle = "版本更新记录",
+                    onClick = { showChangelog = true }
+                )
             }
             item {
-                ArrowRow("关于我们") { showAboutDialog = true }
+                FeatureRow(
+                    icon = Icons.Filled.Info,
+                    title = "关于我们",
+                    onClick = { showAboutDialog = true }
+                )
             }
             item {
-                ArrowRow("清空所有课表数据") { showClearDialog = true }
+                FeatureRow(
+                    icon = Icons.Filled.Warning,
+                    title = "清空所有课表数据",
+                    onClick = { showClearDialog = true }
+                )
             }
         }
     }
@@ -547,7 +605,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             options = listOf("海盐蓝" to "default", "马卡龙蓝" to "macaron_blue", "马卡龙粉" to "macaron_pink", "抹茶绿" to "matcha", "樱花粉" to "sakura", "紫藤紫" to "wisteria", "蛋炒饭" to "fried_rice"),
             selected = colorTheme,
             onSelect = { container.setColorTheme(it) },
-            onDismiss = { showColorThemeDialog = false }
+            onDismiss = { showColorThemeDialog = false; backToSettingsParent() }
         )
     }
 
@@ -564,7 +622,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                     "system" -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
                 }
             },
-            onDismiss = { showDarkModeDialog = false }
+            onDismiss = { showDarkModeDialog = false; backToSettingsParent() }
         )
     }
 
@@ -574,7 +632,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             options = listOf("5分钟" to 5, "10分钟" to 10, "15分钟" to 15, "30分钟" to 30),
             selected = reminderMinutes,
             onSelect = { container.setReminderMinutes(it) },
-            onDismiss = { showReminderTimeDialog = false }
+            onDismiss = { showReminderTimeDialog = false; backToSettingsParent() }
         )
     }
 
@@ -584,7 +642,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             options = listOf("关闭" to 0, "轻柔" to 1, "适中" to 2, "强力" to 3),
             selected = vibrationMode,
             onSelect = { container.setVibrationMode(it) },
-            onDismiss = { showVibrationModeDialog = false }
+            onDismiss = { showVibrationModeDialog = false; backToSettingsParent() }
         )
     }
 
@@ -638,6 +696,13 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
         )
     }
 
+    if (showRewardQr) {
+        RewardQrDialog(
+            context = context,
+            onDismiss = { showRewardQr = false }
+        )
+    }
+
     if (showAboutDialog) {
         AboutDialog(
             context = context,
@@ -659,15 +724,16 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     if (showJwImportSub) {
         JwImportSubDialog(
             onDismiss = { showJwImportSub = false; showImportMenu = true },
-            onWebImport = { showJwImportSub = false; freeImportMode = false; showWebImportScreen = true },
+            onWebImport = { showJwImportSub = false; freeImportMode = false; webImportSession++; showWebImportScreen = true },
             onNativeImport = { showJwImportSub = false; showImportScreen = true },
-            onFreeImport = { showJwImportSub = false; freeImportMode = true; showWebImportScreen = true }
+            onFreeImport = { showJwImportSub = false; freeImportMode = true; webImportSession++; showWebImportScreen = true }
         )
     }
 
     if (showFileImportSub) {
         FileImportSubDialog(
             onDismiss = { showFileImportSub = false; showImportMenu = true },
+            onPdf = { showFileImportSub = false; showPdfImportScreen = true },
             onExcel = { showFileImportSub = false; excelLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel")) },
             onHtml = { showFileImportSub = false; htmlLauncher.launch(arrayOf("text/html")) },
             onCsv = { showFileImportSub = false; csvImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values")) },
@@ -714,8 +780,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             },
             onDeleteScheme = { scheme ->
                 scope.launch {
-                    app.repository.deleteByScheme(scheme.id)
-                    app.repository.deleteScheme(scheme.id)
+                    app.repository.deleteSchemeCascade(scheme.id)
                     if (scheme.id == container.activeSchemeId.value) {
                         val def = app.repository.getSchemeById(0L)
                             ?: SchemeEntity(id = 0, name = "默认课表")
@@ -736,7 +801,8 @@ private fun importFromUri(
     context: android.content.Context,
     app: TimetableApplication,
     uri: Uri,
-    type: String
+    type: String,
+    schemeId: Long = 0L
 ) {
     val gson = Gson()
     val scope = kotlinx.coroutines.MainScope()
@@ -744,8 +810,9 @@ private fun importFromUri(
         withContext(Dispatchers.IO) {
             try {
                 val courses: List<CourseEntity> = when (type) {
-                    "excel" -> parseExcel(context, uri)
-                    "html" -> parseHtml(context, uri)
+                    "excel" -> parseExcel(context, uri, schemeId)
+                    "html" -> parseHtml(context, uri, schemeId)
+                    "csv" -> parseCsv(context, uri, schemeId)
                     "backup" -> parseBackup(context, uri, gson)
                     else -> emptyList()
                 }
@@ -757,10 +824,24 @@ private fun importFromUri(
                     return@withContext
                 }
 
-                app.repository.deleteAll()
-                courses.forEach { app.repository.insert(it) }
+                // Deduplicate against existing courses
+                val existing = app.repository.allCourses.first()
+                val newCourses = courses.filter { new ->
+                    existing.none { existingCourse ->
+                        existingCourse.name == new.name &&
+                        existingCourse.dayOfWeek == new.dayOfWeek &&
+                        existingCourse.startSlot == new.startSlot
+                    }
+                }
+                if (newCourses.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "所有课程已存在，无需重复导入", Toast.LENGTH_SHORT).show()
+                    }
+                    return@withContext
+                }
+                app.repository.insertAll(newCourses)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "成功导入 ${courses.size} 门课程", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "成功导入 ${newCourses.size} 门课程", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -771,7 +852,7 @@ private fun importFromUri(
     }
 }
 
-private fun parseExcel(context: android.content.Context, uri: Uri): List<CourseEntity> {
+private fun parseExcel(context: android.content.Context, uri: Uri, schemeId: Long): List<CourseEntity> {
     val courses = mutableListOf<CourseEntity>()
 
     try {
@@ -827,7 +908,8 @@ private fun parseExcel(context: android.content.Context, uri: Uri): List<CourseE
                         dayOfWeek = day,
                         startSlot = startSlot,
                         endSlot = endSlot,
-                        weeks = weeksStr
+                        weeks = weeksStr,
+                        schemeId = schemeId
                     ))
                 }
             }
@@ -839,7 +921,7 @@ private fun parseExcel(context: android.content.Context, uri: Uri): List<CourseE
     return courses
 }
 
-private fun parseHtml(context: android.content.Context, uri: Uri): List<CourseEntity> {
+private fun parseHtml(context: android.content.Context, uri: Uri, schemeId: Long): List<CourseEntity> {
     val courses = mutableListOf<CourseEntity>()
 
     try {
@@ -869,7 +951,8 @@ private fun parseHtml(context: android.content.Context, uri: Uri): List<CourseEn
                         dayOfWeek = day,
                         startSlot = startSlot,
                         endSlot = endSlot,
-                        weeks = cells.getOrElse(6) { "" }
+                        weeks = cells.getOrElse(6) { "" },
+                        schemeId = schemeId
                     ))
                 }
             }
@@ -878,6 +961,51 @@ private fun parseHtml(context: android.content.Context, uri: Uri): List<CourseEn
         return emptyList()
     }
 
+    return courses
+}
+
+private fun parseCsv(context: android.content.Context, uri: Uri, schemeId: Long): List<CourseEntity> {
+    val courses = mutableListOf<CourseEntity>()
+    try {
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            val lines = inputStream.bufferedReader().readLines()
+            // Skip header line if first line looks like a header
+            val startIdx = if (lines.isNotEmpty() && lines[0].contains("课程名称")) 1 else 0
+            for (i in startIdx until lines.size) {
+                val line = lines[i].trim()
+                if (line.isBlank()) continue
+                // Handle quoted CSV fields
+                val cells = mutableListOf<String>()
+                var current = StringBuilder()
+                var inQuotes = false
+                for (ch in line) {
+                    when {
+                        ch == '"' -> inQuotes = !inQuotes
+                        ch == ',' && !inQuotes -> { cells.add(current.toString().trim()); current = StringBuilder() }
+                        else -> current.append(ch)
+                    }
+                }
+                cells.add(current.toString().trim())
+                if (cells.size >= 6) {
+                    val day = cells.getOrNull(3)?.toIntOrNull() ?: continue
+                    val startSlot = cells.getOrNull(4)?.toIntOrNull() ?: continue
+                    val endSlot = cells.getOrNull(5)?.toIntOrNull() ?: continue
+                    courses.add(CourseEntity(
+                        name = cells[0],
+                        teacher = cells.getOrElse(1) { "" },
+                        room = cells.getOrElse(2) { "" },
+                        dayOfWeek = day,
+                        startSlot = startSlot,
+                        endSlot = endSlot,
+                        weeks = cells.getOrElse(6) { "" },
+                        schemeId = schemeId
+                    ))
+                }
+            }
+        }
+    } catch (_: Exception) {
+        return emptyList()
+    }
     return courses
 }
 

@@ -1,27 +1,134 @@
 package com.eggrice.timetable.di
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.eggrice.timetable.TimetableApplication
+import com.eggrice.timetable.data.School
 import com.eggrice.timetable.data.SchoolRegistry
 import com.eggrice.timetable.data.repository.CourseRepository
-import com.eggrice.timetable.data.repository.SettingsRepository
+import com.eggrice.timetable.network.QiangZhiClient
 import com.eggrice.timetable.network.ZhengfangClient
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import com.eggrice.timetable.util.currentWeekFrom
+import com.eggrice.timetable.util.parseSemesterStart
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 
 class AppContainer(context: Context) {
     private val app = context.applicationContext as TimetableApplication
     val repository: CourseRepository get() = app.repository
     val zhengfangClient by lazy { ZhengfangClient() }
+    val qiangzhiClient by lazy { QiangZhiClient() }
     val schoolRegistry by lazy { SchoolRegistry(context) }
 
     private val prefs = context.getSharedPreferences("egg_rice_prefs", Context.MODE_PRIVATE)
-    private val settingsRepo = SettingsRepository(context)
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    // ── Favorite schools ──
+    private val gson = Gson()
+    private val _favoriteSchoolIds = MutableStateFlow(loadFavoriteIds())
+    val favoriteSchoolIds: StateFlow<Set<String>> = _favoriteSchoolIds
+
+    private fun loadFavoriteIds(): Set<String> {
+        val raw = prefs.getString("favorite_school_ids", null) ?: return emptySet()
+        return try {
+            gson.fromJson(raw, object : TypeToken<Set<String>>() {}.type) ?: emptySet()
+        } catch (_: Exception) { emptySet() }
+    }
+
+    fun toggleFavoriteSchool(schoolId: String) {
+        val current = _favoriteSchoolIds.value.toMutableSet()
+        if (schoolId in current) current.remove(schoolId) else current.add(schoolId)
+        _favoriteSchoolIds.value = current
+        prefs.edit().putString("favorite_school_ids", gson.toJson(current)).apply()
+    }
+
+    // ── Custom user-defined schools ──
+    private val _customSchools = MutableStateFlow(loadCustomSchools())
+    val customSchools: StateFlow<List<School>> = _customSchools
+
+    private fun loadCustomSchools(): List<School> {
+        val raw = prefs.getString("custom_schools", null) ?: return emptyList()
+        return try {
+            gson.fromJson(raw, object : TypeToken<List<School>>() {}.type) ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun addCustomSchool(school: School) {
+        val current = _customSchools.value.toMutableList()
+        current.removeAll { it.baseUrl.equals(school.baseUrl, ignoreCase = true) }
+        current.add(0, school)
+        _customSchools.value = current
+        prefs.edit().putString("custom_schools", gson.toJson(current)).apply()
+    }
+
+    // ── Credential memory (EncryptedSharedPreferences) ──
+    private val credPrefs: SharedPreferences by lazy {
+        val ctx = context.applicationContext
+        val masterKey = MasterKey.Builder(ctx)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        val encrypted = try {
+            EncryptedSharedPreferences.create(
+                ctx,
+                "edu_credentials_encrypted",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.w("AppContainer", "EncryptedSharedPreferences unavailable, falling back to plain", e)
+            ctx.getSharedPreferences("edu_credentials_encrypted", Context.MODE_PRIVATE)
+        }
+        migrateOldCredentials(ctx, encrypted)
+        encrypted
+    }
+
+    private fun migrateOldCredentials(ctx: Context, target: SharedPreferences) {
+        val marker = ctx.getSharedPreferences("_migration_marker", Context.MODE_PRIVATE)
+        if (marker.getBoolean("creds_migrated", false)) return
+
+        val old = ctx.getSharedPreferences("egg_rice_prefs", Context.MODE_PRIVATE)
+        val keysToRemove = mutableListOf<String>()
+        old.all.forEach { (key, value) ->
+            if (key.startsWith("cred_user_") || key.startsWith("cred_pass_")) {
+                target.edit().putString(key, value.toString()).apply()
+                keysToRemove.add(key)
+            }
+        }
+        if (keysToRemove.isNotEmpty()) {
+            val edit = old.edit()
+            keysToRemove.forEach { edit.remove(it) }
+            edit.apply()
+        }
+        marker.edit().putBoolean("creds_migrated", true).apply()
+    }
+
+    fun saveCredential(baseUrl: String, username: String, password: String) {
+        val key = baseUrl.trimEnd('/')
+        credPrefs.edit()
+            .putString("cred_user_$key", username)
+            .putString("cred_pass_$key", password)
+            .apply()
+    }
+
+    fun loadCredential(baseUrl: String): Pair<String, String>? {
+        val key = baseUrl.trimEnd('/')
+        val user = credPrefs.getString("cred_user_$key", null) ?: return null
+        val pass = credPrefs.getString("cred_pass_$key", null) ?: return null
+        return Pair(user, pass)
+    }
+
+    fun deleteCredential(baseUrl: String) {
+        val key = baseUrl.trimEnd('/')
+        credPrefs.edit()
+            .remove("cred_user_$key")
+            .remove("cred_pass_$key")
+            .apply()
+    }
 
     // ── User profile ──
     private val _nickname = MutableStateFlow(prefs.getString("nickname", "同学") ?: "同学")
@@ -31,11 +138,9 @@ class AppContainer(context: Context) {
 
     fun setNickname(value: String) {
         _nickname.value = value; prefs.edit().putString("nickname", value).apply()
-        scope.launch { settingsRepo.setNickname(value) }
     }
     fun setSchool(value: String) {
         _school.value = value; prefs.edit().putString("school", value).apply()
-        scope.launch { settingsRepo.setSchool(value) }
     }
 
     // ── Scheme management ──
@@ -48,7 +153,6 @@ class AppContainer(context: Context) {
         _activeSchemeId.value = id
         _activeSchemeName.value = name
         prefs.edit().putLong("active_scheme_id", id).putString("active_scheme_name", name).apply()
-        scope.launch { settingsRepo.setActiveScheme(id, name) }
     }
 
     // ── Display toggles ──
@@ -66,7 +170,13 @@ class AppContainer(context: Context) {
     fun toggleShowCampus() { setBool("show_campus", !_showCampus.value, _showCampus) }
     fun toggleShowSlotTime() { setBool("show_slot_time", !_showSlotTime.value, _showSlotTime) }
 
-    // ── Theme switching (4 themes) ──
+    // 值类型 setter（个性化配置页使用，避免先 toggle 再比较的竞态）
+    fun setShowTeacher(value: Boolean) { setBool("show_teacher", value, _showTeacher) }
+    fun setShowRoom(value: Boolean) { setBool("show_room", value, _showRoom) }
+    fun setShowCampus(value: Boolean) { setBool("show_campus", value, _showCampus) }
+    fun setShowSlotTime(value: Boolean) { setBool("show_slot_time", value, _showSlotTime) }
+
+    // ── Theme switching (7 themes) ──
     private val _colorTheme = MutableStateFlow(prefs.getString("color_theme", "default") ?: "default")
     val colorTheme: StateFlow<String> = _colorTheme
 
@@ -78,8 +188,6 @@ class AppContainer(context: Context) {
     fun setColorTheme(value: String) { setStr("color_theme", value, _colorTheme) }
 
     // ── Grid appearance ──
-    private val _showDashedBorder = MutableStateFlow(prefs.getBoolean("show_dashed_border", false))
-    val showDashedBorder: StateFlow<Boolean> = _showDashedBorder
     private val _textCentered = MutableStateFlow(prefs.getBoolean("text_centered", true))
     val textCentered: StateFlow<Boolean> = _textCentered
     private val _gridHeight = MutableStateFlow(prefs.getInt("grid_height", 64))
@@ -89,14 +197,18 @@ class AppContainer(context: Context) {
     private val _gridTextSize = MutableStateFlow(prefs.getInt("grid_text_size", 12))
     val gridTextSize: StateFlow<Int> = _gridTextSize
 
-    fun toggleDashedBorder() { setBool("show_dashed_border", !_showDashedBorder.value, _showDashedBorder) }
     fun setTextCentered(value: Boolean) { setBool("text_centered", value, _textCentered) }
     fun setGridHeight(value: Int) { setInt("grid_height", value, _gridHeight) }
     fun setGridOpacity(value: Float) {
         _gridOpacity.value = value; prefs.edit().putFloat("grid_opacity", value).apply()
-        scope.launch { settingsRepo.setGridOpacity(value) }
     }
     fun setGridTextSize(value: Int) { setInt("grid_text_size", value, _gridTextSize) }
+    fun setShowNonCurrentWeek(value: Boolean) { setBool("show_non_current_week", value, _showNonCurrentWeek) }
+    fun setShowOddEven(value: Boolean) { setBool("show_odd_even", value, _showOddEven) }
+
+    private val _verticalLayout = MutableStateFlow(prefs.getBoolean("vertical_layout", true))
+    val verticalLayout: StateFlow<Boolean> = _verticalLayout
+    fun setVerticalLayout(value: Boolean) { setBool("vertical_layout", value, _verticalLayout) }
 
     // ── Time slot defaults ──
     private val _defaultClassDuration = MutableStateFlow(prefs.getInt("class_duration", 45))
@@ -116,21 +228,16 @@ class AppContainer(context: Context) {
     val semesterWeeks: StateFlow<Int> = _semesterWeeks
     fun setSemesterWeeks(value: Int) { setInt("semester_weeks", value, _semesterWeeks) }
 
-    private val _currentWeekOverride = MutableStateFlow(prefs.getInt("current_week_override", 0))
-    val currentWeekOverride: StateFlow<Int> = _currentWeekOverride
-    fun setCurrentWeekOverride(value: Int) { setInt("current_week_override", value, _currentWeekOverride) }
+    // ── Cross-tab navigation signal: Homework ──
+    private val _pendingShowHomework = MutableStateFlow(false)
+    val pendingShowHomework: StateFlow<Boolean> = _pendingShowHomework
+
+    fun requestShowHomework() { _pendingShowHomework.value = true }
+    fun consumeShowHomework() { _pendingShowHomework.value = false }
 
     fun autoCurrentWeek(): Int {
-        val startStr = _semesterStart.value
-        if (startStr.isBlank()) return 1
-        return try {
-            val parts = startStr.split("-")
-            val start = java.time.LocalDate.of(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
-            val now = java.time.LocalDate.now()
-            val days = java.time.temporal.ChronoUnit.DAYS.between(start, now)
-            val week = Math.floorDiv(days, 7).toInt() + 1
-            week.coerceIn(1, _semesterWeeks.value)
-        } catch (_: Exception) { 1 }
+        val start = parseSemesterStart(_semesterStart.value) ?: return 1
+        return currentWeekFrom(start, _semesterWeeks.value)
     }
 
     // ── General settings ──
@@ -166,6 +273,11 @@ class AppContainer(context: Context) {
     fun toggleAutoUpdate() { setBool("auto_update", !_autoUpdate.value, _autoUpdate) }
     fun toggleShowNonCurrentWeek() { setBool("show_non_current_week", !_showNonCurrentWeek.value, _showNonCurrentWeek) }
 
+    // ── Donate toggle ──
+    private val _showDonate = MutableStateFlow(prefs.getBoolean("show_donate", true))
+    val showDonate: StateFlow<Boolean> = _showDonate
+    fun toggleDonate() { setBool("show_donate", !_showDonate.value, _showDonate) }
+
     // ── Vibration mode: 0=off, 1=light, 2=medium, 3=strong ──
     private val _vibrationMode = MutableStateFlow(prefs.getInt("vibration_mode", 1))
     val vibrationMode: StateFlow<Int> = _vibrationMode
@@ -181,7 +293,6 @@ class AppContainer(context: Context) {
     val otherWeekAlpha: StateFlow<Float> = _otherWeekAlpha
     fun setOtherWeekAlpha(value: Float) {
         _otherWeekAlpha.value = value; prefs.edit().putFloat("other_week_alpha", value).apply()
-        scope.launch { settingsRepo.setOtherWeekAlpha(value) }
     }
 
     // ── Wallpaper URI (empty = none) ──
@@ -189,7 +300,7 @@ class AppContainer(context: Context) {
     val wallpaperUri: StateFlow<String> = _wallpaperUri
     fun setWallpaperUri(value: String) { setStr("wallpaper_uri", value, _wallpaperUri) }
 
-    // ── Skin: "wangcai" bundles sea-blue theme + 旺财 pet, "fried_rice" bundles golden theme + 煎蛋 pet ──
+    // ── Skin: "wangcai" bundles sea-blue theme + 旺财 pet, "fried_rice" bundles golden theme ──
     private val _skin = MutableStateFlow(prefs.getString("app_skin", "wangcai") ?: "wangcai")
     val skin: StateFlow<String> = _skin
 
@@ -198,21 +309,45 @@ class AppContainer(context: Context) {
         when (value) {
             "wangcai" -> {
                 setColorTheme("default")
+                setPetIndex(1)
+            }
+            "macaron_blue" -> {
+                setColorTheme("macaron_blue")
+                setPetIndex(1)
+            }
+            "macaron_pink" -> {
+                setColorTheme("macaron_pink")
+                setPetIndex(0)
+            }
+            "matcha" -> {
+                setColorTheme("matcha")
                 setPetIndex(3)
+            }
+            "sakura" -> {
+                setColorTheme("sakura")
+                setPetIndex(0)
+            }
+            "wisteria" -> {
+                setColorTheme("wisteria")
+                setPetIndex(2)
             }
             "fried_rice" -> {
                 setColorTheme("fried_rice")
                 setPetIndex(1)
             }
+            // Unknown skin values: apply as color theme directly
+            else -> {
+                setColorTheme(value)
+            }
         }
     }
 
-    // ── Pet: 0=饭团, 1=煎蛋, 2=小咪, 3=旺财, 4=跳跳, 5=滚滚 ──
-    private val _petIndex = MutableStateFlow(prefs.getInt("pet_index", 0))
+    // ── Pet: 0=小咪, 1=旺财, 2=跳跳, 3=滚滚 ──
+    private val _petIndex = MutableStateFlow(prefs.getInt("pet_index", 1))
     val petIndex: StateFlow<Int> = _petIndex
     fun setPetIndex(value: Int) { setInt("pet_index", value, _petIndex) }
 
-    private val _petName = MutableStateFlow(prefs.getString("pet_name", "饭团") ?: "饭团")
+    private val _petName = MutableStateFlow(prefs.getString("pet_name", "旺财") ?: "旺财")
     val petName: StateFlow<String> = _petName
     fun setPetName(value: String) {
         _petName.value = value; prefs.edit().putString("pet_name", value).apply()
@@ -221,55 +356,16 @@ class AppContainer(context: Context) {
     val borderStyle: StateFlow<Int> = _borderStyle
     fun setBorderStyle(value: Int) { setInt("border_style", value, _borderStyle) }
 
-    // ── helpers (dual-write to SharedPreferences + DataStore) ──
+    // ── helpers（单一事实来源：SharedPreferences + StateFlow）──
     private fun setBool(key: String, value: Boolean, flow: MutableStateFlow<Boolean>) {
         flow.value = value; prefs.edit().putBoolean(key, value).apply()
-        scope.launch {
-            when (key) {
-                "show_teacher" -> settingsRepo.setShowTeacher(value)
-                "show_room" -> settingsRepo.setShowRoom(value)
-                "show_campus" -> settingsRepo.setShowCampus(value)
-                "show_slot_time" -> settingsRepo.setShowSlotTime(value)
-                "show_dashed_border" -> settingsRepo.setShowDashedBorder(value)
-                "text_centered" -> settingsRepo.setTextCentered(value)
-                "show_treasure_box" -> settingsRepo.setShowTreasureBox(value)
-                "show_widget" -> settingsRepo.setShowWidget(value)
-                "reminder_enabled" -> settingsRepo.setReminderEnabled(value)
-                "auto_update" -> settingsRepo.setAutoUpdate(value)
-                "show_odd_even" -> settingsRepo.setShowOddEven(value)
-                "show_non_current_week" -> settingsRepo.setShowNonCurrentWeek(value)
-            }
-        }
     }
 
     private fun setInt(key: String, value: Int, flow: MutableStateFlow<Int>) {
         flow.value = value; prefs.edit().putInt(key, value).apply()
-        scope.launch {
-            when (key) {
-                "corner_radius" -> settingsRepo.setCornerRadius(value)
-                "grid_height" -> settingsRepo.setGridHeight(value)
-                "grid_text_size" -> settingsRepo.setGridTextSize(value)
-                "class_duration" -> settingsRepo.setClassDuration(value)
-                "break_duration" -> settingsRepo.setBreakDuration(value)
-                "semester_weeks" -> settingsRepo.setSemesterWeeks(value)
-                "current_week_override" -> settingsRepo.setCurrentWeekOverride(value)
-                "reminder_minutes" -> settingsRepo.setReminderMinutes(value)
-                "vibration_mode" -> settingsRepo.setVibrationMode(value)
-                "grid_bg_color" -> settingsRepo.setGridBgColor(value)
-                "border_style" -> settingsRepo.setBorderStyle(value)
-            }
-        }
     }
 
     private fun setStr(key: String, value: String, flow: MutableStateFlow<String>) {
         flow.value = value; prefs.edit().putString(key, value).apply()
-        scope.launch {
-            when (key) {
-                "color_theme" -> settingsRepo.setColorTheme(value)
-                "semester_start" -> settingsRepo.setSemesterStart(value)
-                "dark_mode" -> settingsRepo.setDarkMode(value)
-                "wallpaper_uri" -> settingsRepo.setWallpaperUri(value)
-            }
-        }
     }
 }

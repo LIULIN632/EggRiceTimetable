@@ -21,9 +21,12 @@
 -keep class okhttp3.** { *; }
 
 # Coroutines
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
 -keepclassmembernames class kotlinx.coroutines.** {
     volatile <fields>;
 }
+-keep class kotlin.coroutines.jvm.internal.** { *; }
 
 # Compose
 -dontwarn androidx.compose.**

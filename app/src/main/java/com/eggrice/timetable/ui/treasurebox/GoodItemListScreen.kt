@@ -30,6 +30,7 @@ import com.eggrice.timetable.data.entity.GoodItemEntity
 import com.eggrice.timetable.data.repository.CourseRepository
 import com.eggrice.timetable.ui.components.EmptyStatePlaceholder
 import com.eggrice.timetable.ui.theme.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private data class PresetGoodItem(
@@ -90,9 +91,10 @@ fun GoodItemListScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
 
-    // Initialize preset items on first load
+    // Initialize preset items on first load — use .first() to read real DB state
     LaunchedEffect(Unit) {
-        if (items.isEmpty()) {
+        val existing = repository.getGoodItemsByScheme(schemeId).first()
+        if (existing.isEmpty()) {
             PRESET_GOOD_ITEMS.forEachIndexed { idx, preset ->
                 repository.insertGoodItem(
                     GoodItemEntity(

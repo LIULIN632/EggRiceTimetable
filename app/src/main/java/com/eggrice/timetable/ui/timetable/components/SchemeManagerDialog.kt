@@ -68,7 +68,7 @@ fun SchemeManagerDialog(
                     LazyColumn(
                         modifier = Modifier.heightIn(max = 320.dp)
                     ) {
-                        items(schemes) { scheme ->
+                        items(schemes, key = { it.id }) { scheme ->
                             val isActive = scheme.id == activeSchemeId
                             Row(
                                 modifier = Modifier

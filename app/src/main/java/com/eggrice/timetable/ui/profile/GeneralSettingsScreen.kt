@@ -162,6 +162,7 @@ fun FeatureToggleScreen(
     showWidget: Boolean,
     reminderEnabled: Boolean,
     autoUpdate: Boolean,
+    showDonate: Boolean,
     onBack: () -> Unit
 ) {
     val colors = LocalEggRiceColors.current
@@ -206,6 +207,16 @@ fun FeatureToggleScreen(
                     FeatureToggleItem("自动检查更新", "启动时自动检查新版本", autoUpdate) { container.toggleAutoUpdate() }
                 }
             }
+            Spacer(Modifier.height(16.dp))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.surfaceCard,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
+                Column {
+                    FeatureToggleItem("打赏开发者", "支持开发者 · 请开发者喝杯奶茶", showDonate) { container.toggleDonate() }
+                }
+            }
         }
     }
 }
@@ -217,7 +228,6 @@ private fun FeatureToggleItem(
     checked: Boolean,
     onToggle: () -> Unit
 ) {
-    val isDark = LocalDarkMode.current
     val colors = LocalEggRiceColors.current
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -296,7 +306,7 @@ fun SkinSettingsScreen(
                 emoji = "🍳",
                 name = "蛋炒饭",
                 desc = "金黄琥珀 · 温暖治愈",
-                petName = "默认宠物：煎蛋",
+                petName = "默认宠物：旺财",
                 isSelected = skin == "fried_rice",
                 accentColor = if (isDark) Color(0xFFF5B840) else Color(0xFFF0A030),
                 previewColors = listOf(Color(0xFFF0A030), Color(0xFFFFF0D0), Color(0xFFFFFDF5)),

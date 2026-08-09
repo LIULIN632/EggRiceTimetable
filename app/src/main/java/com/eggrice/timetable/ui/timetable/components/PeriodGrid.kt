@@ -1,5 +1,7 @@
 package com.eggrice.timetable.ui.timetable.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -17,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -38,6 +41,7 @@ import com.eggrice.timetable.data.entity.TimeSlotEntity
 import com.eggrice.timetable.ui.theme.*
 import java.time.LocalTime
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 @Composable
 fun PeriodGrid(
@@ -49,7 +53,6 @@ fun PeriodGrid(
     showRoom: Boolean,
     showCampus: Boolean = false,
     showSlotTime: Boolean,
-    showDashedBorder: Boolean,
     textCentered: Boolean,
     gridHeightProvider: () -> Int,
     cornerRadius: Int,
@@ -62,6 +65,7 @@ fun PeriodGrid(
     vibrationMode: Int = 1,
     gridBgColor: Int = -1,
     otherWeekAlpha: Float = 0.50f,
+    verticalLayout: Boolean = true,
     homeworkCourseNames: Set<String> = emptySet(),
     onCourseClick: (CourseEntity) -> Unit,
     onEmptyCellClick: (Int, Int) -> Unit,
@@ -109,6 +113,16 @@ fun PeriodGrid(
     var dragTargetSlot by remember { mutableStateOf(0) }
     var gridPixelWidth by remember { mutableStateOf(0f) }
     var sidebarWidthPx by remember { mutableStateOf(0f) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
+
+    // Optimistic position overrides — applied immediately on drag end,
+    // cleared when the underlying course list syncs from DB.
+    var optimisticMoves by remember { mutableStateOf(mapOf<Long, Triple<Int, Int, Int>>()) }
+    // Clear optimistic moves when courses list changes (DB sync complete)
+    val coursesKey = remember(courses) { courses.hashCode() }
+    LaunchedEffect(coursesKey) {
+        if (optimisticMoves.isNotEmpty()) optimisticMoves = emptyMap()
+    }
 
     val allDisplayCourses = remember(courses, nonCurrentCourses, showNonCurrentWeek) {
         if (showNonCurrentWeek) {
@@ -135,14 +149,30 @@ fun PeriodGrid(
     val sidebarDp = with(density) { sidebarWidthPx.toDp() }
 
     // Split and group separately: non-current rendered behind, current on top
-    val currentByCell = remember(allDisplayCourses, nonCurrentIds) {
-        allDisplayCourses.filter { it.id !in nonCurrentIds }
-            .groupBy { it.dayOfWeek to it.startSlot }
+    // Apply optimistic moves so dragged courses reflect their new position instantly
+    val currentCoursesResolved = remember(allDisplayCourses, nonCurrentIds, optimisticMoves) {
+        allDisplayCourses.filter { it.id !in nonCurrentIds }.map { course ->
+            val om = optimisticMoves[course.id]
+            if (om != null) course.copy(dayOfWeek = om.first, startSlot = om.second, endSlot = om.third)
+            else course
+        }
     }
-    val nonCurrentByCell = remember(allDisplayCourses, nonCurrentIds) {
-        allDisplayCourses.filter { it.id in nonCurrentIds }
-            .groupBy { it.dayOfWeek to it.startSlot }
+    val nonCurrentResolved = remember(allDisplayCourses, nonCurrentIds, optimisticMoves) {
+        allDisplayCourses.filter { it.id in nonCurrentIds }.map { course ->
+            val om = optimisticMoves[course.id]
+            if (om != null) course.copy(dayOfWeek = om.first, startSlot = om.second, endSlot = om.third)
+            else course
+        }
     }
+    val currentByCell = remember(currentCoursesResolved) {
+        currentCoursesResolved.groupBy { it.dayOfWeek to it.startSlot }
+    }
+    val nonCurrentByCell = remember(nonCurrentResolved) {
+        nonCurrentResolved.groupBy { it.dayOfWeek to it.startSlot }
+    }
+
+    // Drag target span — how many cells the dragged course occupies
+    val dragSpanSlots = draggedCourse?.let { (it.endSlot - it.startSlot + 1).coerceAtLeast(1) } ?: 0
 
     Box(
         modifier = modifier.fillMaxWidth()
@@ -153,6 +183,7 @@ fun PeriodGrid(
             modifier = Modifier
                 .fillMaxWidth()
                 .clipToBounds()
+                .onSizeChanged { viewportHeightPx = it.height.toFloat() }
                 .verticalScroll(scrollState, enabled = draggedCourse == null)
         ) {
             // Single tall Box containing grid backgrounds + absolutely-positioned course cards
@@ -207,7 +238,8 @@ fun PeriodGrid(
                         // 7 day cells — background + border + highlights only
                         for (day in 1..7) {
                             val isToday = isCurrentWeek && day == todayDay
-                            val isDragTarget = draggedCourse != null && dragTargetDay == day && dragTargetSlot == slotNum
+                            val isDragTarget = draggedCourse != null && dragTargetDay == day
+                                && slotNum in dragTargetSlot until (dragTargetSlot + dragSpanSlots)
 
                             Box(
                                 modifier = Modifier
@@ -278,7 +310,6 @@ fun PeriodGrid(
 
                         coursesAtCell.forEachIndexed { idx, course ->
                             val isDragging = draggedCourse?.id == course.id
-                            if (isDragging) return@forEachIndexed
 
                             val spanSlots = (course.endSlot - course.startSlot + 1).coerceAtLeast(1)
                             val cardHeightDp = spanSlots * safeGridHeight
@@ -293,27 +324,29 @@ fun PeriodGrid(
                                     .height(cardHeightDp.dp)
                                     .offset(x = xDp, y = yDp)
                                     .clip(RoundedCornerShape(cornerDp))
-                                    .background(bgColor.copy(alpha = otherWeekAlpha))
-                                    .drawBehind {
-                                        drawRoundRect(
-                                            color = courseBorderColor(course.colorIndex, isDark),
-                                            cornerRadius = CornerRadius(cornerDp.toPx()),
-                                            style = Stroke(
-                                                width = 1.5.dp.toPx(),
-                                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 3f), 0f)
+                                    .background(bgColor.copy(alpha = if (isDragging) otherWeekAlpha * 0.3f else otherWeekAlpha))
+                                    .then(
+                                        if (!isDragging) Modifier.drawBehind {
+                                            drawRoundRect(
+                                                color = courseBorderColor(course.colorIndex, isDark),
+                                                cornerRadius = CornerRadius(cornerDp.toPx()),
+                                                style = Stroke(
+                                                    width = 1.5.dp.toPx(),
+                                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 3f), 0f)
+                                                )
                                             )
-                                        )
-                                    }
+                                        } else Modifier
+                                    )
                                     .clickable {
                                         if (draggedCourse == null) {
                                             triggerVibration()
                                             onCourseClick(course)
                                         }
                                     }
-                                    .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    .padding(horizontal = 4.dp, vertical = 8.dp),
                                 contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                             ) {
-                                CourseCardContent(course, textColor, true, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames, otherWeekAlpha)
+                                CourseCardContent(course, textColor, true, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames, if (isDragging) 0.15f else otherWeekAlpha, verticalLayout)
                             }
                         }
                     }
@@ -330,6 +363,8 @@ fun PeriodGrid(
                         else usableWidth
 
                         coursesAtCell.forEachIndexed { idx, course ->
+                            val isDragging = draggedCourse?.id == course.id
+
                             val spanSlots = (course.endSlot - course.startSlot + 1).coerceAtLeast(1)
                             val cardHeightDp = spanSlots * safeGridHeight
                             val bgColor = courseBgColor(course.colorIndex, isDark)
@@ -343,11 +378,15 @@ fun PeriodGrid(
                                     .height(cardHeightDp.dp)
                                     .offset(x = xDp, y = yDp)
                                     .zIndex(10f)
-                                    .shadow(2.dp, RoundedCornerShape(cornerRadius.dp))
+                                    .then(
+                                        if (isDragging) Modifier
+                                        else Modifier
+                                            .shadow(2.dp, RoundedCornerShape(cornerRadius.dp))
+                                    )
                                     .clip(RoundedCornerShape(cornerRadius.dp))
-                                    .background(bgColor.copy(alpha = gridOpacity))
-                                    .drawBehind {
-                                        if (borderStyle > 0) {
+                                    .background(bgColor.copy(alpha = if (isDragging) gridOpacity * 0.2f else gridOpacity))
+                                    .then(
+                                        if (!isDragging && borderStyle > 0) Modifier.drawBehind {
                                             drawRoundRect(
                                                 color = courseBorderColor(course.colorIndex, isDark),
                                                 cornerRadius = CornerRadius(cornerRadius.dp.toPx()),
@@ -356,8 +395,8 @@ fun PeriodGrid(
                                                     pathEffect = if (borderStyle == 2) PathEffect.dashPathEffect(floatArrayOf(6f, 3f), 0f) else null
                                                 )
                                             )
-                                        }
-                                    }
+                                        } else Modifier
+                                    )
                                     .pointerInput(course.id) {
                                         detectDragGesturesAfterLongPress(
                                             onDragStart = {
@@ -373,18 +412,23 @@ fun PeriodGrid(
                                                 val c = draggedCourse ?: return@detectDragGesturesAfterLongPress
                                                 if (cellW > 0f && cellH > 0f) {
                                                     dragTargetDay = (c.dayOfWeek + (dragOffset.x / cellW).roundToInt()).coerceIn(1, 7)
-                                                    dragTargetSlot = (c.startSlot + (dragOffset.y / cellH).roundToInt()).coerceIn(1, timeSlots.size.coerceAtLeast(1))
+                                                    val span = (c.endSlot - c.startSlot).coerceAtLeast(0)
+                                                    val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
+                                                    dragTargetSlot = (c.startSlot + (dragOffset.y / cellH).roundToInt()).coerceIn(1, maxSlot)
                                                 }
                                             },
                                             onDragEnd = {
                                                 val c = draggedCourse
                                                 draggedCourse = null
                                                 if (c != null) {
+                                                    val span = (c.endSlot - c.startSlot).coerceAtLeast(0)
+                                                    val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
                                                     val td = dragTargetDay.coerceIn(1, 7)
-                                                    val ts = dragTargetSlot.coerceIn(1, timeSlots.size.coerceAtLeast(1))
+                                                    val ts = dragTargetSlot.coerceIn(1, maxSlot)
                                                     dragOffset = Offset.Zero
                                                     dragTargetDay = 0; dragTargetSlot = 0
                                                     if (td != c.dayOfWeek || ts != c.startSlot) {
+                                                        optimisticMoves = optimisticMoves + (c.id to Triple(td, ts, c.endSlot - c.startSlot + ts))
                                                         onCourseMoved(c, td, ts)
                                                     }
                                                 }
@@ -402,10 +446,10 @@ fun PeriodGrid(
                                             onCourseClick(course)
                                         }
                                     }
-                                    .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    .padding(horizontal = 4.dp, vertical = 8.dp),
                                 contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                             ) {
-                                CourseCardContent(course, textColor, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames)
+                                CourseCardContent(course, textColor, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames, if (isDragging) 0.5f else 1f, verticalLayout)
                             }
                         }
                     }
@@ -414,6 +458,11 @@ fun PeriodGrid(
         }
 
         // Floating card during drag (rendered outside scroll in outer Box)
+        val liftScale by animateFloatAsState(
+            targetValue = if (draggedCourse != null) 1.06f else 1f,
+            animationSpec = spring(dampingRatio = 0.4f, stiffness = 400f),
+            label = "dragLift"
+        )
         draggedCourse?.let { course ->
             if (cellW > 0f && cellH > 0f) {
                 val spanSlots = (course.endSlot - course.startSlot + 1).coerceAtLeast(1)
@@ -429,14 +478,37 @@ fun PeriodGrid(
                         .height((spanSlots * safeGridHeight).dp)
                         .offset { IntOffset(xPx, yPx) }
                         .zIndex(200f)
-                        .shadow(16.dp, RoundedCornerShape(cornerRadius.dp))
+                        .scale(liftScale)
+                        .shadow(if (liftScale > 1.02f) 20.dp else 10.dp, RoundedCornerShape(cornerRadius.dp))
                         .clip(RoundedCornerShape(cornerRadius.dp))
                         .background(floatBg.copy(alpha = gridOpacity))
-                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
                     contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                 ) {
-                    CourseCardContent(course, floatText, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames)
+                    CourseCardContent(course, floatText, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames, otherWeekAlpha = 1f, verticalLayout = verticalLayout)
                 }
+            }
+        }
+
+        // Autoscroll while dragging near edges
+        LaunchedEffect(draggedCourse) {
+            val course = draggedCourse ?: return@LaunchedEffect
+            while (draggedCourse != null) {
+                val scrollPx = scrollState.value.toFloat()
+                val courseStartYPx = (course.startSlot - 1) * cellH
+                val dragYInView = courseStartYPx + dragOffset.y - scrollPx
+                val edgePx = viewportHeightPx * 0.15f
+                val speed = when {
+                    dragYInView < edgePx && scrollPx > 0f ->
+                        ((dragYInView - edgePx) / edgePx * 12f).coerceIn(-12f, 0f)
+                    scrollPx < scrollState.maxValue && dragYInView > viewportHeightPx - edgePx ->
+                        ((dragYInView - (viewportHeightPx - edgePx)) / edgePx * 12f).coerceIn(0f, 12f)
+                    else -> 0f
+                }
+                if (speed != 0f) {
+                    scrollState.scrollTo((scrollPx + speed).roundToInt().coerceIn(0, scrollState.maxValue))
+                }
+                kotlinx.coroutines.delay(16L)
             }
         }
     }
@@ -454,10 +526,97 @@ private fun CourseCardContent(
     textCentered: Boolean,
     gridTextSize: Int,
     hasHomework: Boolean = false,
-    otherWeekAlpha: Float = 0.50f
+    otherWeekAlpha: Float = 0.50f,
+    verticalLayout: Boolean = true
 ) {
     val nameAlpha = if (isNonCurrent) (otherWeekAlpha * 2.78f).coerceIn(0.3f, 1f) else 1f
     val infoAlpha = if (isNonCurrent) (otherWeekAlpha * 1.67f).coerceIn(0.2f, 0.8f) else 0.6f
+
+    val displayRoom = remember(course.room, showCampus) {
+        val room = course.room
+        if (showCampus) room
+        else {
+            val campusIdx = room.indexOf("校区")
+            if (campusIdx > 0) room.substring(campusIdx + 2).trimStart(' ', '·', '-') else room
+        }
+    }
+
+    if (!verticalLayout) {
+        // ── Horizontal compact layout (original style): name + teacher/room, single lines ──
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = if (textCentered) Alignment.CenterHorizontally else Alignment.Start
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = course.name,
+                    color = textColor.copy(alpha = nameAlpha),
+                    fontSize = gridTextSize.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = (gridTextSize + 2).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                    textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
+                    modifier = Modifier.weight(1f)
+                )
+                if (hasHomework) {
+                    Icon(
+                        Icons.Filled.Warning,
+                        contentDescription = "有作业",
+                        tint = Color(0xFFFFB800),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+            if (showTeacher && course.teacher.isNotEmpty()) {
+                Text(
+                    text = course.teacher,
+                    color = textColor.copy(alpha = infoAlpha),
+                    fontSize = (gridTextSize - 2).sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = (gridTextSize + 1).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                    textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (showRoom && displayRoom.isNotEmpty()) {
+                Text(
+                    text = displayRoom,
+                    color = textColor.copy(alpha = infoAlpha),
+                    fontSize = (gridTextSize - 2).sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = (gridTextSize + 1).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                    textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (showOddEven && course.weekType != "all") {
+                Text(
+                    text = if (course.weekType == "odd") "单周" else "双周",
+                    color = textColor.copy(alpha = infoAlpha),
+                    fontSize = (gridTextSize - 2).sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = (gridTextSize + 1).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    softWrap = false,
+                    textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+        return
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -511,35 +670,27 @@ private fun CourseCardContent(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Normal,
                 lineHeight = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+                textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (showRoom && displayRoom.isNotEmpty()) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = displayRoom,
+                color = textColor.copy(alpha = infoAlpha),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal,
+                lineHeight = 14.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 softWrap = true,
                 textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
                 modifier = Modifier.fillMaxWidth()
             )
-        }
-        if (showRoom && course.room.isNotEmpty()) {
-            val room = course.room
-            val displayRoom = if (!showCampus) {
-                val campusIdx = room.indexOf("校区")
-                if (campusIdx > 0) room.substring(campusIdx + 2).trimStart(' ', '·', '-')
-                else room
-            } else room
-            if (displayRoom.isNotEmpty()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = displayRoom,
-                    color = textColor.copy(alpha = infoAlpha),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Normal,
-                    lineHeight = 14.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    softWrap = true,
-                    textAlign = if (textCentered) TextAlign.Center else TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
         }
         if (showOddEven && course.weekType != "all") {
             Spacer(Modifier.height(2.dp))

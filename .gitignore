@@ -44,3 +44,12 @@ deep-research-report.md
 # Keystore (passwords)
 keystore.properties
 *.jks
+
+# ---- 敏感文件保护 (VibeCoding 发布前检查清单) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+config.local.*
+*.keystore

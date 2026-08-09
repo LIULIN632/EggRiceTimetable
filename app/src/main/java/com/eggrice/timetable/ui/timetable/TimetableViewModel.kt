@@ -30,12 +30,18 @@ class TimetableViewModel(
     val activeSchemeId: StateFlow<Long> = settings.activeSchemeId
     val activeSchemeName: StateFlow<String> = settings.activeSchemeName
 
-    // Current week: manual override > auto-calculate from semester start > 1
-    private val _currentWeek = MutableStateFlow(
-        if (settings.currentWeekOverride.value > 0) settings.currentWeekOverride.value
-        else settings.autoCurrentWeek()
-    )
+    // Current week: auto-calculate from semester start
+    private val _currentWeek = MutableStateFlow(settings.autoCurrentWeek())
     val currentWeek: StateFlow<Int> = _currentWeek
+
+    // Re-sync current week when semester settings change (e.g. saved from SemesterSettingsPage)
+    init {
+        viewModelScope.launch {
+            combine(settings.semesterStart, settings.semesterWeeks) { _, _ -> }
+                .drop(1)
+                .collect { goToToday() }
+        }
+    }
 
     val semesterTotalWeeks: StateFlow<Int> = settings.semesterWeeks
 
@@ -52,8 +58,7 @@ class TimetableViewModel(
     fun prevWeek() { if (_currentWeek.value > 1) _currentWeek.value-- }
     fun nextWeek() { if (_currentWeek.value < semesterTotalWeeks.value) _currentWeek.value++ }
     fun goToToday() {
-        _currentWeek.value = if (settings.currentWeekOverride.value > 0) settings.currentWeekOverride.value
-        else settings.autoCurrentWeek()
+        _currentWeek.value = settings.autoCurrentWeek()
     }
     fun goToWeek(week: Int) { _currentWeek.value = week.coerceIn(1, semesterTotalWeeks.value) }
 
@@ -148,8 +153,7 @@ class TimetableViewModel(
 
     fun deleteScheme(scheme: SchemeEntity) {
         viewModelScope.launch {
-            repository.deleteByScheme(scheme.id)
-            repository.deleteScheme(scheme.id)
+            repository.deleteSchemeCascade(scheme.id)
             // Switch to default scheme if the deleted one was active
             if (scheme.id == settings.activeSchemeId.value) {
                 val def = repository.getSchemeById(0L) ?: SchemeEntity(id = 0, name = "默认课表")
@@ -177,19 +181,9 @@ class TimetableViewModel(
 
     // 非本周课程：用于半透明显示（与filteredCourses互补）
     val nonCurrentWeekCourses: StateFlow<List<CourseEntity>> = combine(
-        allCourses, _currentWeek
-    ) { courses, week ->
-        val isOdd = week % 2 == 1
-        courses.filter { c ->
-            val wt = c.weekType
-            if (wt == "odd" && !isOdd) return@filter true  // 单周课程在当前双周 → 纳入非本周
-            if (wt == "even" && isOdd) return@filter true   // 双周课程在当前单周 → 纳入非本周
-            if (c.weeks.isNotEmpty()) {
-                val wks = c.weeks.split(",").mapNotNull { it.toIntOrNull() }
-                if (wks.isNotEmpty() && week !in wks) return@filter true
-            }
-            false
-        }
+        allCourses, filteredCourses
+    ) { all, filtered ->
+        if (filtered.isEmpty()) all else all - filtered.toSet()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     class Factory(
@@ -206,27 +200,4 @@ enum class DeleteRange {
     THIS_INSTANCE,
     SAME_TIME_SLOT,
     ALL_BY_NAME
-}
-
-// ── MVI — TimetableUiState + TimetableIntent ──
-data class TimetableUiState(
-    val courses: List<CourseEntity> = emptyList(),
-    val timeSlots: List<TimeSlotEntity> = emptyList(),
-    val currentWeek: Int = 1,
-    val isCurrentWeek: Boolean = false,
-    val showEditor: Boolean = false,
-    val editingCourse: CourseEntity? = null,
-    val activeSchemeName: String = "默认课表"
-)
-
-sealed interface TimetableIntent {
-    data class EditCourse(val course: CourseEntity) : TimetableIntent
-    data class AddCourse(val day: Int, val slot: Int) : TimetableIntent
-    data class SaveCourse(val course: CourseEntity) : TimetableIntent
-    data class DeleteCourseRange(val course: CourseEntity, val range: DeleteRange) : TimetableIntent
-    data class MoveCourse(val course: CourseEntity, val newDay: Int, val newSlot: Int) : TimetableIntent
-    data object GoToToday : TimetableIntent
-    data object PrevWeek : TimetableIntent
-    data object NextWeek : TimetableIntent
-    data class SwitchScheme(val scheme: SchemeEntity) : TimetableIntent
 }

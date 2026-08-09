@@ -81,6 +81,13 @@ interface CourseDao {
     @Query("DELETE FROM time_slots")
     suspend fun deleteAllTimeSlots()
 
+    /** 原子替换全部时间段：删除+插入在同一事务内，避免第二步失败把表清空 */
+    @Transaction
+    suspend fun replaceAllTimeSlots(slots: List<TimeSlotEntity>) {
+        deleteAllTimeSlots()
+        if (slots.isNotEmpty()) insertTimeSlots(slots)
+    }
+
     // ── Homework ──
     @Query("SELECT * FROM homework WHERE schemeId = :schemeId ORDER BY createdAt DESC")
     fun getHomeworkByScheme(schemeId: Long): Flow<List<HomeworkEntity>>
@@ -138,4 +145,29 @@ interface CourseDao {
 
     @Query("DELETE FROM tree_holes WHERE id = :id")
     suspend fun deleteTreeHole(id: Long)
+
+    // ── Scheme cascade deletion ──
+
+    @Query("DELETE FROM homework WHERE schemeId = :schemeId")
+    suspend fun deleteHomeworkByScheme(schemeId: Long)
+
+    @Query("DELETE FROM tasks WHERE schemeId = :schemeId")
+    suspend fun deleteTasksByScheme(schemeId: Long)
+
+    @Query("DELETE FROM good_items WHERE schemeId = :schemeId")
+    suspend fun deleteGoodItemsByScheme(schemeId: Long)
+
+    @Query("DELETE FROM tree_holes WHERE schemeId = :schemeId")
+    suspend fun deleteTreeHolesByScheme(schemeId: Long)
+
+    /** 原子删除课表方案及其所有子表数据（课程/作业/任务/好物/树洞），不留孤儿行 */
+    @Transaction
+    suspend fun deleteSchemeCascade(schemeId: Long) {
+        deleteByScheme(schemeId)
+        deleteHomeworkByScheme(schemeId)
+        deleteTasksByScheme(schemeId)
+        deleteGoodItemsByScheme(schemeId)
+        deleteTreeHolesByScheme(schemeId)
+        deleteScheme(schemeId)
+    }
 }
