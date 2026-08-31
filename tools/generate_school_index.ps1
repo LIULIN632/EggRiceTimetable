@@ -14,7 +14,10 @@ foreach ($t in $types) {
     $path = Join-Path $root "app\src\main\assets\schools_$t.json"
     if (Test-Path $path) {
         # 强制 UTF-8 读取（资产文件为 UTF-8 无 BOM，默认编码可能按系统 ANSI 误读）
-        $schools[$t] = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        $list = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        # 跳过无 baseUrl 的死条目（选了也无法导入）
+        $list = $list | Where-Object { -not [string]::IsNullOrWhiteSpace($_.baseUrl) }
+        $schools[$t] = $list
     } else {
         Write-Warning "缺少 $path，跳过该类型"
     }
