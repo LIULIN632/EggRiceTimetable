@@ -55,20 +55,13 @@ class SchoolIndexUpdater(context: Context) {
         val remote = runCatching { Gson().fromJson(remoteJson, SchoolIndex::class.java) }.getOrNull()
             ?: return Result.Failed("索引数据解析失败")
 
-        // A. 协议版本：远程 > 客户端 → 忽略（提示升级 App）
-        if (remote.protocolVersion > CLIENT_PROTOCOL_VERSION) {
-            return Result.Failed("索引协议版本过高，请更新 App 后再试")
+        when (val decision = evaluateIndex(remote, loadLocalIndex())) {
+            is IndexDecision.Rejected -> return Result.Failed(decision.message)
+            IndexDecision.UpToDate -> return Result.UpToDate
+            IndexDecision.Apply -> Unit
         }
 
-        // B. 数据版本（时间戳字符串字典序比较；远程更旧 = 数据异常）
-        val local = loadLocalIndex()
-        when {
-            local != null && remote.versionId == local.versionId -> return Result.UpToDate
-            local != null && remote.versionId < local.versionId ->
-                return Result.Failed("远程索引版本过旧，已忽略")
-        }
-
-        // C. 延迟写入：临时文件 + rename 原子替换
+        // 延迟写入：临时文件 + rename 原子替换
         return try {
             val dir = File(appContext.filesDir, INDEX_DIR)
             dir.mkdirs()
@@ -96,6 +89,30 @@ class SchoolIndexUpdater(context: Context) {
     } catch (_: Exception) {
         null
     }
+}
+
+/** 索引更新决策（纯逻辑，可单测）：协议版本 / 时间戳版本 / 防回退 */
+internal sealed class IndexDecision {
+    /** 通过校验，可写入 */
+    data object Apply : IndexDecision()
+    /** 已是最新，无需写入 */
+    data object UpToDate : IndexDecision()
+    /** 拒绝写入（协议过高或远程更旧），附原因 */
+    data class Rejected(val message: String) : IndexDecision()
+}
+
+internal fun evaluateIndex(remote: SchoolIndex, local: SchoolIndex?): IndexDecision {
+    // A. 协议版本：远程 > 客户端 → 忽略（需升级 App）
+    if (remote.protocolVersion > SchoolIndexUpdater.CLIENT_PROTOCOL_VERSION) {
+        return IndexDecision.Rejected("索引协议版本过高，请更新 App 后再试")
+    }
+    // B. 数据版本（TIME_ 时间戳字符串字典序比较；远程更旧 = 数据异常，拒绝写入防回退）
+    val localVersion = local?.versionId
+    if (localVersion != null && remote.versionId == localVersion) return IndexDecision.UpToDate
+    if (localVersion != null && remote.versionId < localVersion) {
+        return IndexDecision.Rejected("远程索引版本过旧，已忽略")
+    }
+    return IndexDecision.Apply
 }
 
 /** 学校索引清单（与 tools/generate_school_index.ps1 输出一致） */

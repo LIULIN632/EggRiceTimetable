@@ -23,7 +23,6 @@ import com.eggrice.timetable.network.ZfGradeItem
 import com.eggrice.timetable.network.ZfTerm
 import com.eggrice.timetable.ui.theme.*
 import com.eggrice.timetable.ui.zhengfang.ZhengfangCaptchaHost
-import com.eggrice.timetable.ui.zhengfang.ZhengfangExperimentalBanner
 import com.eggrice.timetable.ui.zhengfang.ZhengfangLoginContent
 import com.eggrice.timetable.ui.zhengfang.ZhengfangSchoolList
 import com.eggrice.timetable.ui.zhengfang.scoreColor
@@ -47,11 +46,6 @@ fun GradeQueryContent(
             .fillMaxSize()
             .background(colors.surfaceAlt)
     ) {
-        ZhengfangExperimentalBanner(
-            "⚠ 试验阶段：本功能数据来自正方教务系统，仅供个人查看；" +
-                "学校未下发平时/期末分项时，对应列显示 —。"
-        )
-
         when {
             selectedSchool == null -> ZhengfangSchoolList(state = viewModel)
             !loggedIn -> ZhengfangLoginContent(

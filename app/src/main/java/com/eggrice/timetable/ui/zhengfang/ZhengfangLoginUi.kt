@@ -31,27 +31,6 @@ import com.eggrice.timetable.ui.theme.*
  * 状态契约见 ZhengfangLoginViewModel 中的 [ZhengfangLoginState]。
  */
 
-// ── 试验阶段提示条 ──
-
-@Composable
-fun ZhengfangExperimentalBanner(text: String) {
-    val colors = LocalEggRiceColors.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .background(Color(0xFFFFF3CD), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
-        Text(
-            text,
-            color = Color(0xFF664D03),
-            fontSize = 12.sp,
-            lineHeight = 17.sp
-        )
-    }
-}
-
 // ── 阶段 1：选择学校 ──
 
 @OptIn(ExperimentalMaterial3Api::class)

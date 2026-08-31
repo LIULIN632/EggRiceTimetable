@@ -24,7 +24,6 @@ import com.eggrice.timetable.network.AcademicTypeInfo
 import com.eggrice.timetable.network.ZhengfangClient
 import com.eggrice.timetable.ui.theme.*
 import com.eggrice.timetable.ui.zhengfang.ZhengfangCaptchaHost
-import com.eggrice.timetable.ui.zhengfang.ZhengfangExperimentalBanner
 import com.eggrice.timetable.ui.zhengfang.ZhengfangLoginContent
 import com.eggrice.timetable.ui.zhengfang.ZhengfangSchoolList
 import com.eggrice.timetable.ui.zhengfang.scoreColor
@@ -54,15 +53,6 @@ fun AcademicQueryScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("修课情况查询", fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(8.dp))
-                        // 试验阶段小标签
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0xFFFFD54F), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text("试验", fontSize = 10.sp, color = Color(0xFF5D4037), fontWeight = FontWeight.Bold)
-                        }
                     }
                 },
                 navigationIcon = {
@@ -80,11 +70,6 @@ fun AcademicQueryScreen(
                 .padding(padding)
                 .background(colors.surfaceAlt)
         ) {
-            ZhengfangExperimentalBanner(
-                "⚠ 试验阶段：数据来自正方教务「学生学业情况」，仅供个人查看；" +
-                    "学校未下发学分明细时，对应位置显示 —。"
-            )
-
             when {
                 selectedSchool == null -> ZhengfangSchoolList(state = viewModel)
                 !loggedIn -> ZhengfangLoginContent(

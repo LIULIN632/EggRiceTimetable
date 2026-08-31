@@ -186,7 +186,7 @@ fun TreasureBoxScreen(
             // ── Card 6: 查询老师办公室 ──
             ToolCard(
                 title = "查询老师办公室",
-                subtitle = "查看任课教师的办公地点和联系方式（试验阶段）",
+                subtitle = "查看任课教师的办公地点和联系方式",
                 bgColor = Color(0xFF8B95A8),
                 onClick = { showTeacherLookup = true }
             )
@@ -194,7 +194,7 @@ fun TreasureBoxScreen(
             // ── Card 7: 课程与成绩（合并：课程管理 + 成绩查询）──
             ToolCard(
                 title = "课程与成绩",
-                subtitle = "课程管理 · 成绩查询（试验阶段）",
+                subtitle = "课程管理 · 成绩查询",
                 bgColor = Color(0xFF7D9B76),
                 onClick = { showGradesHub = true }
             )
@@ -202,7 +202,7 @@ fun TreasureBoxScreen(
             // ── Card 8: 修课情况查询 ──
             ToolCard(
                 title = "修课情况查询",
-                subtitle = "已修课程 · 学分 · 绩点统计（试验阶段）",
+                subtitle = "已修课程 · 学分 · 绩点统计",
                 bgColor = Color(0xFF9C88B2),
                 onClick = { showAcademicQuery = true }
             )
