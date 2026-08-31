@@ -28,7 +28,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -700,7 +699,6 @@ internal fun AboutDialog(
 ) {
     val versionName = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "未知" } catch (_: Exception) { "未知" }
     val colors = LocalEggRiceColors.current
-    var showRewardQr by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -723,119 +721,6 @@ internal fun AboutDialog(
                 Text("支持正方/强智/青果/超星教务系统", fontSize = 12.sp, color = colors.textTertiary)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("所有数据仅存储在手机本地", fontSize = 12.sp, color = colors.textTertiary)
-
-                // ── 赞助支持区域 ──
-                Spacer(modifier = Modifier.height(18.dp))
-                HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.Favorite,
-                        contentDescription = null,
-                        tint = Color(0xFFFF6B8A),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("支持开发者", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "如果这个APP帮到了你，\n可以请开发者喝杯奶茶☕",
-                    fontSize = 13.sp,
-                    color = colors.textSecondary,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 18.sp
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    "早买早享受，晚买有折扣，不买免费送",
-                    fontSize = 12.sp,
-                    color = colors.textTertiary,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Button(
-                    onClick = { showRewardQr = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.accentMain),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.FavoriteBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("请开发者喝杯奶茶", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "所有功能永久免费，赞助纯属自愿",
-                    fontSize = 11.sp,
-                    color = colors.textTertiary,
-                    textAlign = TextAlign.Center
-                )
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
-
-    // ── 微信赞赏码弹窗 ──
-    if (showRewardQr) {
-        RewardQrDialog(context = context, onDismiss = { showRewardQr = false })
-    }
-}
-
-@Composable
-internal fun RewardQrDialog(
-    context: android.content.Context,
-    onDismiss: () -> Unit
-) {
-    val colors = LocalEggRiceColors.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.Favorite,
-                    contentDescription = null,
-                    tint = Color(0xFFFF6B8A),
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("感谢支持！", fontWeight = FontWeight.ExtraBold)
-            }
-        },
-        text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    "打开微信扫一扫，即可赞赏",
-                    fontSize = 13.sp,
-                    color = colors.textSecondary
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Image(
-                    painter = painterResource(id = com.eggrice.timetable.R.drawable.reward_qrcode),
-                    contentDescription = "微信赞赏码",
-                    modifier = Modifier
-                        .fillMaxWidth(0.75f)
-                        .clip(RoundedCornerShape(12.dp))
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "每一份支持都是对独立开发者的鼓励",
-                    fontSize = 11.sp,
-                    color = colors.textTertiary,
-                    textAlign = TextAlign.Center
-                )
             }
         },
         confirmButton = {},

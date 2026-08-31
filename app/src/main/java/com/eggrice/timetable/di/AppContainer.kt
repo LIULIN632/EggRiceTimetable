@@ -292,11 +292,6 @@ class AppContainer(context: Context) {
     fun toggleAutoUpdate() { setBool("auto_update", !_autoUpdate.value, _autoUpdate) }
     fun toggleShowNonCurrentWeek() { setBool("show_non_current_week", !_showNonCurrentWeek.value, _showNonCurrentWeek) }
 
-    // ── Donate toggle ──
-    private val _showDonate = MutableStateFlow(prefs.getBoolean("show_donate", true))
-    val showDonate: StateFlow<Boolean> = _showDonate
-    fun toggleDonate() { setBool("show_donate", !_showDonate.value, _showDonate) }
-
     // ── Vibration mode: 0=off, 1=light, 2=medium, 3=strong ──
     private val _vibrationMode = MutableStateFlow(prefs.getInt("vibration_mode", 1))
     val vibrationMode: StateFlow<Int> = _vibrationMode

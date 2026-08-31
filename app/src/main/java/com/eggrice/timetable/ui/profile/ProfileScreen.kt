@@ -82,7 +82,6 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showSchemeManager by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
     var showSkinSettings by remember { mutableStateOf(false) }
-    var showRewardQr by remember { mutableStateOf(false) }
 
     // ── Settings sub-page states ──
     var showSettingsMain by remember { mutableStateOf(false) }
@@ -220,7 +219,6 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     val skin by container.skin.collectAsState()
     val showTreasureBox by container.showTreasureBox.collectAsState()
     val showWidget by container.showWidget.collectAsState()
-    val showDonate by container.showDonate.collectAsState()
     val allSchemes by app.repository.allSchemes.collectAsState(emptyList())
     val activeSchemeId by container.activeSchemeId.collectAsState()
     val allTasks by app.repository.getTasksByScheme(activeSchemeId).collectAsState(emptyList())
@@ -386,7 +384,6 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             showWidget = showWidget,
             reminderEnabled = reminderEnabled,
             autoUpdate = autoUpdate,
-            showDonate = showDonate,
             onBack = { showFeatureToggles = false; backToSettingsParent() }
         )
         return
@@ -507,16 +504,6 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                         icon = Icons.Filled.SystemUpdate,
                         title = "检查更新",
                         onClick = { showUpdateDialog = true }
-                    )
-                }
-            }
-            if (showDonate) {
-                item {
-                    FeatureRow(
-                        icon = Icons.Filled.Favorite,
-                        title = "支持开发者",
-                        subtitle = "如果帮到了你，请开发者喝杯奶茶",
-                        onClick = { showRewardQr = true }
                     )
                 }
             }
@@ -696,13 +683,6 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             gson = gson,
             app = app,
             onDismiss = { showShareExportDialog = false }
-        )
-    }
-
-    if (showRewardQr) {
-        RewardQrDialog(
-            context = context,
-            onDismiss = { showRewardQr = false }
         )
     }
 

@@ -162,7 +162,6 @@ fun FeatureToggleScreen(
     showWidget: Boolean,
     reminderEnabled: Boolean,
     autoUpdate: Boolean,
-    showDonate: Boolean,
     onBack: () -> Unit
 ) {
     val colors = LocalEggRiceColors.current
@@ -205,16 +204,6 @@ fun FeatureToggleScreen(
                     FeatureToggleItem("桌面小组件", "桌面快捷查看课表", showWidget) { container.toggleWidget() }
                     HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp, modifier = Modifier.padding(start = 16.dp, end = 16.dp))
                     FeatureToggleItem("自动检查更新", "启动时自动检查新版本", autoUpdate) { container.toggleAutoUpdate() }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = colors.surfaceCard,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            ) {
-                Column {
-                    FeatureToggleItem("打赏开发者", "支持开发者 · 请开发者喝杯奶茶", showDonate) { container.toggleDonate() }
                 }
             }
         }

@@ -1,6 +1,10 @@
 package com.eggrice.timetable.ui.profile
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -8,16 +12,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eggrice.timetable.ui.theme.*
+
+/** 开源仓库地址（更新日志顶部入口） */
+private const val GITHUB_REPO_URL = "https://github.com/LIULIN632/EggRiceTimetable"
 
 data class VersionLog(
     val version: String,
@@ -28,6 +37,48 @@ data class VersionLog(
 )
 
 val changelog = listOf(
+    VersionLog(
+        version = "v11.0.4",
+        date = "2026-08-31",
+        features = listOf(
+            "教务成绩查询：登录正方教务在线查成绩，学期切换 + 平时/期末/期中分项",
+            "修课情况查询：已修课程、学分要求、绩点与计划完成统计",
+            "成绩存档：一键同步全部学期成绩保存到本地，离线可查看",
+            "项目已开源至 GitHub，欢迎 Star 与反馈"
+        ),
+        improvements = listOf(
+            "教务导入提速：记住学校成功接口组合，再次导入通常 1 次请求完成",
+            "登录更稳定：验证码误判修复，无需验证码的学校可直接登录",
+            "自定义学校支持编辑与删除"
+        )
+    ),
+    VersionLog(
+        version = "v10.8",
+        date = "2026-08-10",
+        improvements = listOf(
+            "教务导入健壮性增强：多模式试错、超时与重试优化",
+            "深色模式适配完善",
+            "数据一致性修复"
+        )
+    ),
+    VersionLog(
+        version = "v7.32",
+        date = "2026-06-06",
+        improvements = listOf(
+            "主题系统重构",
+            "个人主页优化",
+            "新增组件"
+        )
+    ),
+    VersionLog(
+        version = "v7.25",
+        date = "2026-06-05",
+        improvements = listOf(
+            "通用导入支持",
+            "解析器去重，导入更稳定",
+            "Gson 空安全修复"
+        )
+    ),
     VersionLog(
         version = "v6.86",
         date = "2026-06-04",
@@ -182,9 +233,73 @@ fun ChangelogScreen(onBack: () -> Unit) {
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item { GitHubRepoCard() }
             itemsIndexed(changelog) { index, log ->
                 VersionCard(log, isFirst = index == 0)
             }
+        }
+    }
+}
+
+/** 更新日志顶部：GitHub 开源仓库入口，点击跳转浏览器 */
+@Composable
+private fun GitHubRepoCard() {
+    val colors = LocalEggRiceColors.current
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_REPO_URL)))
+                } catch (_: Exception) {
+                    Toast.makeText(context, "无法打开浏览器", Toast.LENGTH_SHORT).show()
+                }
+            },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF24292F)
+            ) {
+                Icon(
+                    Icons.Filled.Code,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "GitHub 开源仓库",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    GITHUB_REPO_URL.removePrefix("https://"),
+                    fontSize = 12.sp,
+                    color = colors.textTertiary
+                )
+            }
+            Text(
+                "打开",
+                fontSize = 13.sp,
+                color = accentColor(),
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
