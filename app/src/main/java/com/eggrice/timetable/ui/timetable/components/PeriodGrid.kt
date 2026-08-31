@@ -2,8 +2,10 @@ package com.eggrice.timetable.ui.timetable.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,8 +13,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,10 +46,13 @@ import androidx.compose.ui.zIndex
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.entity.TimeSlotEntity
 import com.eggrice.timetable.ui.theme.*
+import com.eggrice.timetable.ui.timetable.MergedCourseBlock
+import com.eggrice.timetable.ui.timetable.mergeCourses
 import java.time.LocalTime
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PeriodGrid(
     timeSlots: List<TimeSlotEntity>,
@@ -124,6 +134,10 @@ fun PeriodGrid(
         if (optimisticMoves.isNotEmpty()) optimisticMoves = emptyMap()
     }
 
+    // P0 冲突块状态：底部弹窗 + 块内当前显示课程（默认主课程）
+    var conflictSheet by remember { mutableStateOf<MergedCourseBlock?>(null) }
+    var conflictActiveIds by remember { mutableStateOf(mapOf<String, Long>()) }
+
     val allDisplayCourses = remember(courses, nonCurrentCourses, showNonCurrentWeek) {
         if (showNonCurrentWeek) {
             val currentIds = courses.map { it.id }.toSet()
@@ -163,9 +177,6 @@ fun PeriodGrid(
             if (om != null) course.copy(dayOfWeek = om.first, startSlot = om.second, endSlot = om.third)
             else course
         }
-    }
-    val currentByCell = remember(currentCoursesResolved) {
-        currentCoursesResolved.groupBy { it.dayOfWeek to it.startSlot }
     }
     val nonCurrentByCell = remember(nonCurrentResolved) {
         nonCurrentResolved.groupBy { it.dayOfWeek to it.startSlot }
@@ -351,30 +362,34 @@ fun PeriodGrid(
                         }
                     }
 
-                    // ── Layer 2b: Current week courses (on top, solid style with drag) ──
-                    currentByCell.forEach { (cell, coursesAtCell) ->
-                        val (day, startSlot) = cell
-                        val overlapCount = coursesAtCell.size
-                        val cellPad = 1.dp
-                        val gap = if (overlapCount > 1) 1.dp else 0.dp
-                        val usableWidth = cellWDp - cellPad * 2
-                        val cardWidth = if (overlapCount > 1)
-                            (usableWidth - gap * (overlapCount - 1)) / overlapCount
-                        else usableWidth
+                    // ── Layer 2b: Current week courses (merged blocks, on top, solid style with drag) ──
+                    val currentBlocks = remember(currentCoursesResolved, currentWeek) {
+                        mergeCourses(currentCoursesResolved, currentWeek).groupBy { it.day }
+                    }
+                    val cellPad = 1.dp
+                    val usableWidth = cellWDp - cellPad * 2
 
-                        coursesAtCell.forEachIndexed { idx, course ->
-                            val isDragging = draggedCourse?.id == course.id
+                    currentBlocks.forEach { (day, blocks) ->
+                        blocks.forEach { block ->
+                            val blockKey = blockKeyOf(block)
+                            // 默认显示：用户选择的课程 → 第一个本周活跃课 → 块内第一门
+                            val mainCourse = block.courses.firstOrNull { it.course.id == conflictActiveIds[blockKey] }?.course
+                                ?: block.courses.firstOrNull { it.isActive }?.course
+                                ?: block.courses.firstOrNull()?.course
+                                ?: return@forEach
+                            val isDragging = block.courses.any { it.course.id == draggedCourse?.id }
+                            val isConflict = block.isConflict
 
-                            val spanSlots = (course.endSlot - course.startSlot + 1).coerceAtLeast(1)
+                            val spanSlots = (block.end - block.start).coerceAtLeast(0.3f)
                             val cardHeightDp = spanSlots * safeGridHeight
-                            val bgColor = courseBgColor(course.colorIndex, isDark)
-                            val textColor = courseTextColor(course.colorIndex, isDark)
-                            val xDp = sidebarDp + cellPad + cellWDp * (day - 1) + (cardWidth + gap) * idx
-                            val yDp = safeGridHeight.dp * (startSlot - 1)
+                            val bgColor = courseBgColor(mainCourse.colorIndex, isDark)
+                            val textColor = courseTextColor(mainCourse.colorIndex, isDark)
+                            val xDp = sidebarDp + cellPad + cellWDp * (day - 1)
+                            val yDp = safeGridHeight.dp * (block.start - 1)
 
                             Box(
                                 modifier = Modifier
-                                    .width(cardWidth)
+                                    .width(usableWidth)
                                     .height(cardHeightDp.dp)
                                     .offset(x = xDp, y = yDp)
                                     .zIndex(10f)
@@ -388,7 +403,7 @@ fun PeriodGrid(
                                     .then(
                                         if (!isDragging && borderStyle > 0) Modifier.drawBehind {
                                             drawRoundRect(
-                                                color = courseBorderColor(course.colorIndex, isDark),
+                                                color = courseBorderColor(mainCourse.colorIndex, isDark),
                                                 cornerRadius = CornerRadius(cornerRadius.dp.toPx()),
                                                 style = Stroke(
                                                     width = 1.dp.toPx(),
@@ -397,59 +412,87 @@ fun PeriodGrid(
                                             )
                                         } else Modifier
                                     )
-                                    .pointerInput(course.id) {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = {
-                                                triggerVibration()
-                                                draggedCourse = course
-                                                dragOffset = Offset.Zero
-                                                dragTargetDay = course.dayOfWeek
-                                                dragTargetSlot = course.startSlot
-                                            },
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
-                                                dragOffset += dragAmount
-                                                val c = draggedCourse ?: return@detectDragGesturesAfterLongPress
-                                                if (cellW > 0f && cellH > 0f) {
-                                                    dragTargetDay = (c.dayOfWeek + (dragOffset.x / cellW).roundToInt()).coerceIn(1, 7)
-                                                    val span = (c.endSlot - c.startSlot).coerceAtLeast(0)
-                                                    val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
-                                                    dragTargetSlot = (c.startSlot + (dragOffset.y / cellH).roundToInt()).coerceIn(1, maxSlot)
+                                    .then(
+                                        if (isConflict) {
+                                            // 冲突块第一版：禁用拖动（拖动作用于块内哪门课是状态泥潭），
+                                            // 点击进弹窗切换，长按提示先解决冲突
+                                            Modifier.combinedClickable(
+                                                onClick = {
+                                                    if (draggedCourse == null) {
+                                                        triggerVibration()
+                                                        conflictSheet = block
+                                                    }
+                                                },
+                                                onLongClick = {
+                                                    android.widget.Toast.makeText(context, "课程重叠，点击角标选择要显示的课程", android.widget.Toast.LENGTH_SHORT).show()
                                                 }
-                                            },
-                                            onDragEnd = {
-                                                val c = draggedCourse
-                                                draggedCourse = null
-                                                if (c != null) {
-                                                    val span = (c.endSlot - c.startSlot).coerceAtLeast(0)
-                                                    val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
-                                                    val td = dragTargetDay.coerceIn(1, 7)
-                                                    val ts = dragTargetSlot.coerceIn(1, maxSlot)
-                                                    dragOffset = Offset.Zero
-                                                    dragTargetDay = 0; dragTargetSlot = 0
-                                                    if (td != c.dayOfWeek || ts != c.startSlot) {
-                                                        optimisticMoves = optimisticMoves + (c.id to Triple(td, ts, c.endSlot - c.startSlot + ts))
-                                                        onCourseMoved(c, td, ts)
+                                            )
+                                        } else {
+                                            Modifier
+                                                .pointerInput(block.courses.map { it.course.id }) {
+                                                    detectDragGesturesAfterLongPress(
+                                                        onDragStart = {
+                                                            triggerVibration()
+                                                            draggedCourse = mainCourse
+                                                            dragOffset = Offset.Zero
+                                                            dragTargetDay = mainCourse.dayOfWeek
+                                                            dragTargetSlot = mainCourse.startSlot
+                                                        },
+                                                        onDrag = { change, dragAmount ->
+                                                            change.consume()
+                                                            dragOffset += dragAmount
+                                                            val c = draggedCourse ?: return@detectDragGesturesAfterLongPress
+                                                            if (cellW > 0f && cellH > 0f) {
+                                                                dragTargetDay = (c.dayOfWeek + (dragOffset.x / cellW).roundToInt()).coerceIn(1, 7)
+                                                                val span = (c.endSlot - c.startSlot).coerceAtLeast(0)
+                                                                val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
+                                                                dragTargetSlot = (c.startSlot + (dragOffset.y / cellH).roundToInt()).coerceIn(1, maxSlot)
+                                                            }
+                                                        },
+                                                        onDragEnd = {
+                                                            val c = draggedCourse
+                                                            draggedCourse = null
+                                                            if (c != null) {
+                                                                val span = (c.endSlot - c.startSlot).coerceAtLeast(0)
+                                                                val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
+                                                                val td = dragTargetDay.coerceIn(1, 7)
+                                                                val ts = dragTargetSlot.coerceIn(1, maxSlot)
+                                                                dragOffset = Offset.Zero
+                                                                dragTargetDay = 0; dragTargetSlot = 0
+                                                                if (td != c.dayOfWeek || ts != c.startSlot) {
+                                                                    optimisticMoves = optimisticMoves + (c.id to Triple(td, ts, c.endSlot - c.startSlot + ts))
+                                                                    onCourseMoved(c, td, ts)
+                                                                }
+                                                            }
+                                                        },
+                                                        onDragCancel = {
+                                                            draggedCourse = null
+                                                            dragOffset = Offset.Zero
+                                                            dragTargetDay = 0; dragTargetSlot = 0
+                                                        }
+                                                    )
+                                                }
+                                                .clickable {
+                                                    if (draggedCourse == null) {
+                                                        triggerVibration()
+                                                        onCourseClick(mainCourse)
                                                     }
                                                 }
-                                            },
-                                            onDragCancel = {
-                                                draggedCourse = null
-                                                dragOffset = Offset.Zero
-                                                dragTargetDay = 0; dragTargetSlot = 0
-                                            }
-                                        )
-                                    }
-                                    .clickable {
-                                        if (draggedCourse == null) {
-                                            triggerVibration()
-                                            onCourseClick(course)
                                         }
-                                    }
+                                    )
                                     .padding(horizontal = 4.dp, vertical = 8.dp),
                                 contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                             ) {
-                                CourseCardContent(course, textColor, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames, if (isDragging) 0.5f else 1f, verticalLayout)
+                                CourseCardContent(mainCourse, textColor, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, mainCourse.name in homeworkCourseNames, if (isDragging) 0.5f else 1f, verticalLayout)
+                                // 冲突角标：右上角重叠课程数（仅真正的重叠冲突，相邻同名合并不加角标）
+                                if (isConflict) {
+                                    ConflictBadge(
+                                        count = block.courses.count { it.isActive }.coerceAtLeast(1),
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(top = 2.dp, end = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -510,6 +553,23 @@ fun PeriodGrid(
                 }
                 kotlinx.coroutines.delay(16L)
             }
+        }
+
+        // 冲突课程选择底部弹窗
+        conflictSheet?.let { block ->
+            ConflictCoursesSheet(
+                block = block,
+                activeId = conflictActiveIds[blockKeyOf(block)],
+                onSelect = { id ->
+                    conflictActiveIds = conflictActiveIds + (blockKeyOf(block) to id)
+                    conflictSheet = null
+                },
+                onOpenCourse = { course ->
+                    conflictSheet = null
+                    onCourseClick(course)
+                },
+                onDismiss = { conflictSheet = null }
+            )
         }
     }
 }
@@ -707,5 +767,120 @@ private fun CourseCardContent(
                 modifier = Modifier.fillMaxWidth()
             )
         }
+    }
+}
+
+// ── P0 冲突块：块 key + 角标 + 底部选择弹窗 ──
+
+/** 冲突块的稳定 key（day + Float 逻辑坐标），用于记住用户当前选择显示的课程 */
+private fun blockKeyOf(block: MergedCourseBlock): String = "${block.day}:${block.start}:${block.end}"
+
+/** 冲突角标：右上角重叠课程数 */
+@Composable
+private fun ConflictBadge(count: Int, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xCCE57373))
+            .padding(horizontal = 5.dp, vertical = 1.dp)
+    ) {
+        Text(
+            text = "×$count",
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.ExtraBold
+        )
+    }
+}
+
+/** 冲突课程选择底部弹窗：列出块内全部课程，点击切换块内显示，可进详情 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConflictCoursesSheet(
+    block: MergedCourseBlock,
+    activeId: Long?,
+    onSelect: (Long) -> Unit,
+    onOpenCourse: (CourseEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalEggRiceColors.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Text(
+            text = "课程重叠 · ${block.courses.size} 门",
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            color = colors.textPrimary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        )
+        Text(
+            text = "点击切换课表中显示的课程",
+            fontSize = 12.sp,
+            color = colors.textTertiary,
+            modifier = Modifier.padding(start = 16.dp, bottom = 6.dp)
+        )
+        block.courses.forEachIndexed { index, bc ->
+            val course = bc.course
+            val isActive = course.id == activeId || (activeId == null && index == 0)
+            HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelect(course.id) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(courseBgColor(course.colorIndex, LocalDarkMode.current))
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = course.name,
+                            fontSize = 14.sp,
+                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                            color = colors.textPrimary
+                        )
+                        if (!bc.isActive) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "非本周",
+                                fontSize = 10.sp,
+                                color = colors.textTertiary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = buildString {
+                            append("第").append(course.startSlot).append("-").append(course.endSlot).append("节")
+                            if (course.teacher.isNotBlank()) append(" · ").append(course.teacher)
+                            if (course.room.isNotBlank()) append(" · ").append(course.room)
+                            if (!bc.isActive && bc.visibleRange == null) append(" · 被本周课程覆盖")
+                        },
+                        fontSize = 12.sp,
+                        color = colors.textTertiary
+                    )
+                }
+                if (isActive) {
+                    Text(
+                        text = "显示中",
+                        fontSize = 12.sp,
+                        color = accentColor(),
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(end = 12.dp)
+                    )
+                }
+                TextButton(onClick = { onOpenCourse(course) }) {
+                    Text("详情", fontSize = 13.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
     }
 }

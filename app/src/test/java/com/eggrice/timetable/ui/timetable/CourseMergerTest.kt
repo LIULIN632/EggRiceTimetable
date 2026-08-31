@@ -3,11 +3,12 @@ package com.eggrice.timetable.ui.timetable
 import com.eggrice.timetable.data.entity.CourseEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * CourseMerger 边界用例：合并 + 冲突 + 单双周降级 + 区间减法。
+ * CourseMerger 边界用例：合并 + 冲突 + 单双周降级 + 遮罩区间（leftover/并集）。
  */
 class CourseMergerTest {
 
@@ -18,10 +19,11 @@ class CourseMergerTest {
         end: Int,
         weekType: String = "all",
         weeks: String = "",
-        colorIndex: Int = 0
+        colorIndex: Int = 0,
+        room: String = ""
     ) = CourseEntity(
         name = name, dayOfWeek = day, startSlot = start, endSlot = end,
-        weekType = weekType, weeks = weeks, colorIndex = colorIndex
+        weekType = weekType, weeks = weeks, colorIndex = colorIndex, room = room
     )
 
     // ── 合并规则 ──
@@ -45,8 +47,8 @@ class CourseMergerTest {
             listOf(course("英语", 1, 3, 4), course("数学", 1, 1, 2))
         )
         assertEquals(2, blocks.size)
-        assertEquals("数学", blocks[0].courses.first().name)
-        assertEquals("英语", blocks[1].courses.first().name)
+        assertEquals("数学", blocks[0].courses.first().course.name)
+        assertEquals("英语", blocks[1].courses.first().course.name)
         assertFalse(blocks[0].isConflict)
         assertFalse(blocks[1].isConflict)
     }
@@ -168,8 +170,8 @@ class CourseMergerTest {
     @Test
     fun merge_currentWeek_oddEven_fullOverlap() {
         // 同格 A(单周) + B(双周)，当前单周：A 活跃、B 不活跃。
-        // 块级语义：isVisualDemoted 只在"块内无本周活跃课程"时为 true；
-        // 本例 A 活跃 → 不降级、不误报冲突；B 的区域被 A 完全覆盖 → 遮罩区间为空（B 不可见）。
+        // 块级语义：isVisualDemoted 只在"块内无本周活跃课程"时为 true；本例 A 活跃 → 不降级、不误报冲突。
+        // B 被 A 完全覆盖 → visibleRange=null，不出现在遮罩里，但仍保留在 courses（弹窗可列）。
         val blocks = mergeCourses(
             listOf(
                 course("A", 1, 3, 4, weekType = "odd"),
@@ -181,19 +183,19 @@ class CourseMergerTest {
         val b = blocks[0]
         assertFalse(b.isConflict)
         assertFalse(b.isVisualDemoted)
-        assertEquals(1, b.courses.count { isCourseActiveInWeek(it, 1) })
-        // B 的区间被 A 完全覆盖 → 遮罩区域为空
-        val maskRanges = subtractIntervals(
-            active = listOf(3.0f to 5.0f),      // A 覆盖 [3,5)
-            inactive = listOf(3.0f to 5.0f)     // B 占据 [3,5)
-        )
-        assertTrue(maskRanges.isEmpty())
+        assertEquals(2, b.courses.size)
+        val a = b.courses.first { it.course.name == "A" }
+        val c = b.courses.first { it.course.name == "B" }
+        assertTrue(a.isActive)
+        assertFalse(c.isActive)
+        assertNull(c.visibleRange) // 被 A 完全覆盖
+        assertTrue(b.maskRanges.isEmpty())
     }
 
     @Test
     fun merge_currentWeek_oddEven_partialOverlap_maskRegion() {
         // 部分重叠：A 1-3 节(单周) + B 2-4 节(双周)，当前单周。
-        // 块 [1,5)：A 活跃覆盖 [1,4)；B 不活跃，其 [2,5) 减去 A 的 [1,4) → 剩 [4,5) 画遮罩（P1 场景）。
+        // 块 [1,5)：A 活跃覆盖 [1,4)；B 的 [2,5) 减去 [1,4) → 剩 [4,5) 进块级遮罩。
         val blocks = mergeCourses(
             listOf(
                 course("A", 1, 1, 3, weekType = "odd"),
@@ -205,11 +207,9 @@ class CourseMergerTest {
         val b = blocks[0]
         assertFalse(b.isConflict)
         assertFalse(b.isVisualDemoted) // A 活跃，块不降级
-        val maskRanges = subtractIntervals(
-            active = listOf(1.0f to 4.0f),   // A 活跃区间
-            inactive = listOf(2.0f to 5.0f)  // B 区间
-        )
-        assertEquals(listOf(4.0f to 5.0f), maskRanges)
+        assertEquals(listOf(4.0f..5.0f), b.maskRanges)
+        val c = b.courses.first { it.course.name == "B" }
+        assertEquals(4.0f..5.0f, c.visibleRange)
     }
 
     @Test
@@ -235,9 +235,119 @@ class CourseMergerTest {
         )
         assertTrue(blocks[0].isConflict)
         assertFalse(blocks[0].isVisualDemoted)
+        assertTrue(blocks[0].maskRanges.isEmpty()) // 全部活跃 → 无遮罩
     }
 
-    // ── 区间减法（单双周遮罩用）──
+    // ── 渲染前补齐的 4 个边界用例 ──
+
+    @Test
+    fun merge_twoInactiveOverlap_blockDemoted_noMask() {
+        // 无 active 的双 inactive 重叠：B 1-2 双周 + C 2-3 双周，本周都不活跃
+        // → 单块全降级（整块蒙版处理），不产生局部 maskRanges（否则两个半透明遮罩叠出双重变暗）
+        val blocks = mergeCourses(
+            listOf(
+                course("B", 1, 1, 2, weekType = "even"),
+                course("C", 1, 2, 3, weekType = "even")
+            ),
+            currentWeek = 1
+        )
+        assertEquals(1, blocks.size)
+        val b = blocks[0]
+        assertTrue(b.isVisualDemoted)
+        assertFalse(b.isConflict)
+        assertTrue(b.maskRanges.isEmpty())
+        // 无 active 可减 → 两门课都完整可见
+        assertTrue(b.courses.all { it.isActive == false })
+        assertTrue(b.courses.all { it.visibleRange != null })
+        assertEquals(1.0f, b.start)
+        assertEquals(4.0f, b.end)
+    }
+
+    @Test
+    fun merge_multipleInactiveLeftoverUnion() {
+        // 多 inactive leftover 有交集：A 1-4 单周(active) + B 2-5 双周 + C 3-6 双周，当前单周
+        // B leftover [5,6)，C leftover [5,7) → 块级遮罩做并集 [5,7)，渲染只画一次
+        val blocks = mergeCourses(
+            listOf(
+                course("A", 1, 1, 4, weekType = "odd"),
+                course("B", 1, 2, 5, weekType = "even"),
+                course("C", 1, 3, 6, weekType = "even")
+            ),
+            currentWeek = 1
+        )
+        assertEquals(1, blocks.size)
+        val b = blocks[0]
+        assertFalse(b.isVisualDemoted)
+        assertFalse(b.isConflict)
+        assertEquals(listOf(5.0f..7.0f), b.maskRanges) // 并集，无重叠片段
+        val bCourse = b.courses.first { it.course.name == "B" }
+        val cCourse = b.courses.first { it.course.name == "C" }
+        assertEquals(5.0f..6.0f, bCourse.visibleRange)
+        assertEquals(5.0f..7.0f, cCourse.visibleRange)
+    }
+
+    @Test
+    fun merge_adjacentSameNameDifferentRoom_keepsBoth() {
+        // 同名相邻但教室不同：高数 1-2 节 @A101 + 高数 3-4 节 @B202
+        // → 合并成一块，但两段课程都保留（详情/长按能看到两个教室）
+        val blocks = mergeCourses(
+            listOf(
+                course("高数", 1, 1, 2, room = "A101"),
+                course("高数", 1, 3, 4, room = "B202")
+            )
+        )
+        assertEquals(1, blocks.size)
+        val b = blocks[0]
+        assertEquals(2, b.courses.size)
+        assertEquals(listOf("A101", "B202"), b.courses.map { it.course.room })
+        assertEquals(listOf("高数", "高数"), b.courses.map { it.course.name })
+        assertFalse(b.isConflict)
+        assertTrue(b.maskRanges.isEmpty())
+    }
+
+    @Test
+    fun merge_inactiveFullyCovered_visibleRangeNull() {
+        // 空 leftover：inactive 被 active 完全覆盖 → visibleRange = null，
+        // 不画但保留在 courses（弹窗列出并标"非本周"）
+        val blocks = mergeCourses(
+            listOf(
+                course("A", 1, 1, 4, weekType = "odd"),
+                course("B", 1, 1, 4, weekType = "even")
+            ),
+            currentWeek = 1
+        )
+        assertEquals(1, blocks.size)
+        val b = blocks[0]
+        assertEquals(2, b.courses.size)
+        val covered = b.courses.first { it.course.name == "B" }
+        assertFalse(covered.isActive)
+        assertNull(covered.visibleRange)
+        assertTrue(b.maskRanges.isEmpty())
+    }
+
+    // ── 区间并集（块级遮罩）──
+
+    @Test
+    fun union_adjacentRanges_merged() {
+        assertEquals(listOf(1.0f..5.0f), unionRanges(listOf(1.0f..3.0f, 3.0f..5.0f)))
+    }
+
+    @Test
+    fun union_overlappingRanges_merged() {
+        assertEquals(listOf(1.0f..7.0f), unionRanges(listOf(1.0f..5.0f, 3.0f..7.0f)))
+    }
+
+    @Test
+    fun union_disjointRanges_keptInOrder() {
+        assertEquals(listOf(1.0f..2.0f, 5.0f..6.0f), unionRanges(listOf(5.0f..6.0f, 1.0f..2.0f)))
+    }
+
+    @Test
+    fun union_emptyInput_returnsEmpty() {
+        assertTrue(unionRanges(emptyList()).isEmpty())
+    }
+
+    // ── 区间减法 ──
 
     @Test
     fun subtract_noOverlap_unchanged() {
