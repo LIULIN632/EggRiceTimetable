@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.*
@@ -19,11 +20,15 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.eggrice.timetable.TimetableApplication
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.entity.SchemeEntity
+import com.eggrice.timetable.network.SchoolIndexUpdater
 import com.eggrice.timetable.ui.import_.ImportScreen
 import com.eggrice.timetable.ui.import_.PdfImportScreen
 import com.eggrice.timetable.ui.import_.WebImportScreen
@@ -63,6 +68,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showFaqDialog by remember { mutableStateOf(false) }
     var showFeedbackDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var schoolIndexMsg by remember { mutableStateOf<String?>(null) }
     var showSchoolRequestDialog by remember { mutableStateOf(false) }
     var showShareExportDialog by remember { mutableStateOf(false) }
     var showAppearance by remember { mutableStateOf(false) }
@@ -663,7 +669,52 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             onDismissRequest = { showUpdateDialog = false },
             title = { Text("检查更新") },
             text = {
-                Text("当前版本：v$versionName\n\n蛋炒饭课程表\n纯净无广告 · 开源课表\n\n已是最新版本")
+                Column {
+                    Text(
+                        "当前版本：v$versionName\n\n蛋炒饭课程表\n纯净无广告 · 开源课表",
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
+                    Spacer(Modifier.height(12.dp))
+                    Text("学校列表", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "从 GitHub 拉取最新学校列表（含新增学校与教务地址修正），无需升级 App",
+                        fontSize = 12.sp,
+                        color = colors.textTertiary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (schoolIndexMsg != null) {
+                        Text(
+                            schoolIndexMsg!!,
+                            fontSize = 12.sp,
+                            color = if (schoolIndexMsg!!.startsWith("已更新")) SuccessGreen else colors.textSecondary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    Button(
+                        onClick = {
+                            schoolIndexMsg = null
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    container.schoolIndexUpdater.update()
+                                }
+                                when (result) {
+                                    is SchoolIndexUpdater.Result.Updated -> {
+                                        container.schoolRegistry.reload()
+                                        schoolIndexMsg = "已更新：${result.versionId}，共 ${result.schoolCount} 所学校"
+                                    }
+                                    SchoolIndexUpdater.Result.UpToDate -> schoolIndexMsg = "学校列表已是最新"
+                                    is SchoolIndexUpdater.Result.Failed -> schoolIndexMsg = result.message
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor())
+                    ) {
+                        Text("更新学校列表", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = { showUpdateDialog = false }) { Text("确定") }

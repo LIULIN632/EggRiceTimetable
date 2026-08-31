@@ -2,6 +2,8 @@ package com.eggrice.timetable.data
 
 import android.content.Context
 import android.util.Log
+import com.eggrice.timetable.network.SchoolIndex
+import com.eggrice.timetable.network.SchoolIndexUpdater
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.InputStreamReader
@@ -26,7 +28,7 @@ data class School(
 fun isJwSystemAvailable(type: JwSystemType): Boolean =
     type == JwSystemType.ZHENGFANG || type == JwSystemType.QIANGZHI
 
-private data class SchoolJson(
+data class SchoolJson(
     val id: String,
     val name: String,
     val city: String,
@@ -36,11 +38,41 @@ private data class SchoolJson(
 )
 
 class SchoolRegistry(private val context: Context) {
-    // Load schools on demand by type from per-type JSON files
+    // Load schools on demand by type: 本地热更新索引优先，回退内置 assets
     private val schoolsCache = mutableMapOf<JwSystemType, List<School>>()
+    private var localIndex: SchoolIndex? = null
 
     fun getSchools(type: JwSystemType): List<School> = schoolsCache.getOrPut(type) {
-        try {
+        loadIndexSchools(type).ifEmpty { loadSchoolsFromAsset(type) }
+    }
+
+    /** 索引更新后调用：清空按类型缓存，下次读取走新索引 */
+    fun reload() {
+        synchronized(schoolsCache) {
+            schoolsCache.clear()
+            localIndex = null
+        }
+    }
+
+    /** 本地热更新索引中的学校（仅当索引版本存在且该类型有数据） */
+    private fun loadIndexSchools(type: JwSystemType): List<School> {
+        val index = localIndex ?: SchoolIndexUpdater(context).loadLocalIndex()?.also { localIndex = it }
+            ?: return emptyList()
+        val list = index.schools[type.name.lowercase()] ?: return emptyList()
+        return list.map { raw ->
+            School(
+                id = raw.id,
+                name = raw.name,
+                city = raw.city,
+                jwType = parseJwType(raw.jwType),
+                baseUrl = raw.baseUrl,
+                isV8 = raw.isV8 ?: true
+            )
+        }
+    }
+
+    private fun loadSchoolsFromAsset(type: JwSystemType): List<School> {
+        return try {
             val fileName = "schools_${type.name.lowercase()}.json"
             val result = loadSchoolsFromJson(fileName).map { raw ->
                 School(

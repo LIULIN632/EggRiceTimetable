@@ -36,6 +36,7 @@ gradle/wrapper/gradle-wrapper.jar
 # Personal / internal files
 file_*.png
 school_*.json
+!school_index.json
 school_*.txt
 deep-research-report.md
 问题反馈/

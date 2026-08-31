@@ -11,6 +11,7 @@ import com.eggrice.timetable.data.SchoolRegistry
 import com.eggrice.timetable.data.dao.SavedGradeDao
 import com.eggrice.timetable.data.repository.CourseRepository
 import com.eggrice.timetable.network.QiangZhiClient
+import com.eggrice.timetable.network.SchoolIndexUpdater
 import com.eggrice.timetable.network.ZhengfangClient
 import com.eggrice.timetable.util.currentWeekFrom
 import com.eggrice.timetable.util.parseSemesterStart
@@ -25,6 +26,7 @@ class AppContainer(context: Context) {
     val zhengfangClient by lazy { ZhengfangClient() }
     val qiangzhiClient by lazy { QiangZhiClient() }
     val schoolRegistry by lazy { SchoolRegistry(context) }
+    val schoolIndexUpdater by lazy { SchoolIndexUpdater(context) }
     val savedGradeDao: SavedGradeDao by lazy { app.database.savedGradeDao() }
 
     private val prefs = context.getSharedPreferences("egg_rice_prefs", Context.MODE_PRIVATE)
