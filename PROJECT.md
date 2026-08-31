@@ -50,6 +50,10 @@ app/src/main/java/com/eggrice/timetable/
 - [x] 课程详情弹窗：完整信息 + 编辑/删除
 - [x] 手动添加课程：表单 + 验证
 - [x] 多课表管理：创建/切换/重命名/删除方案
+- [x] 课程重叠管理：贪心合并块（Float 坐标）+ 冲突角标 + 底部弹窗切换显示 + 拖拽拆开
+- [x] 单双周局部遮罩：非本周课程剩余区域斜纹标注（merge 层算好 visibleRange/maskRanges 并集）
+- [x] 拖拽换课：相对更新 DAO（moveByDelta，时序免疫）+ pending 视觉锁 + 合并块整组拖动
+- [x] 当前节次高亮
 
 ### 教务系统导入
 - [x] 正方教务：RSA 加密登录 → 验证码识别 → JSON API → 课程解析
@@ -79,6 +83,9 @@ app/src/main/java/com/eggrice/timetable/
 - [x] 格子高度/圆角/透明度/文字大小可调
 - [x] 边框样式：无/实线/虚线
 - [x] 显示开关：教师/教室/校区/节次时间/非本周/文字居中/单双周
+- [x] 学校索引热更新：SchoolIndexUpdater（协议版本 + 时间戳版本校验 + 延迟写入），
+      tools/generate_school_index.ps1 生成 school_index.json 经 jsDelivr 分发，
+      SchoolRegistry 索引优先回退内置 assets；检查更新弹窗手动触发 + 启动时自动检查
 
 ### 辅助功能
 - [x] 上课提醒通知
