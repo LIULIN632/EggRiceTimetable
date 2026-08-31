@@ -28,8 +28,11 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -191,9 +194,6 @@ fun PeriodGrid(
             else course
         }
     }
-    val nonCurrentByCell = remember(nonCurrentResolved) {
-        nonCurrentResolved.groupBy { it.dayOfWeek to it.startSlot }
-    }
 
     // Drag target span — how many cells the dragged course occupies
     val dragSpanSlots = draggedCourse?.let { (it.endSlot - it.startSlot + 1).coerceAtLeast(1) } ?: 0
@@ -317,74 +317,20 @@ fun PeriodGrid(
                     }
                 }
 
-                // ── Layer 2a: Non-current week courses (behind, dashed ghost style) ──
+                // ── Layer 2: 本周 + 非本周统一合并块 ──
+                // 活跃课实心显示；块内非活跃课的剩余区域(visibleRange/maskRanges)画局部斜纹遮罩；
+                // 整块都是非本周课程 → 保持虚线幽灵样式
                 if (sidebarWidthPx > 0f && cellW > 0f) {
-                    nonCurrentByCell.forEach { (cell, coursesAtCell) ->
-                        val (day, startSlot) = cell
-                        val overlapCount = coursesAtCell.size
-                        val cellPad = 1.dp
-                        val gap = if (overlapCount > 1) 1.dp else 0.dp
-                        val usableWidth = cellWDp - cellPad * 2
-                        val groupWidth = usableWidth * 0.65f
-                        val groupXOffset = (usableWidth - groupWidth) / 2
-                        val cardWidth = if (overlapCount > 1)
-                            (groupWidth - gap * (overlapCount - 1)) / overlapCount
-                        else groupWidth
-                        val cornerDp = cornerRadius.dp
-
-                        coursesAtCell.forEachIndexed { idx, course ->
-                            val isDragging = draggedCourse?.id == course.id
-
-                            val spanSlots = (course.endSlot - course.startSlot + 1).coerceAtLeast(1)
-                            val cardHeightDp = spanSlots * safeGridHeight
-                            val bgColor = courseBgColor(course.colorIndex, isDark)
-                            val textColor = courseTextColor(course.colorIndex, isDark)
-                            val xDp = sidebarDp + cellPad + cellWDp * (day - 1) + groupXOffset + (cardWidth + gap) * idx
-                            val yDp = safeGridHeight.dp * (startSlot - 1)
-
-                            Box(
-                                modifier = Modifier
-                                    .width(cardWidth)
-                                    .height(cardHeightDp.dp)
-                                    .offset(x = xDp, y = yDp)
-                                    .clip(RoundedCornerShape(cornerDp))
-                                    .background(bgColor.copy(alpha = if (isDragging) otherWeekAlpha * 0.3f else otherWeekAlpha))
-                                    .then(
-                                        if (!isDragging) Modifier.drawBehind {
-                                            drawRoundRect(
-                                                color = courseBorderColor(course.colorIndex, isDark),
-                                                cornerRadius = CornerRadius(cornerDp.toPx()),
-                                                style = Stroke(
-                                                    width = 1.5.dp.toPx(),
-                                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 3f), 0f)
-                                                )
-                                            )
-                                        } else Modifier
-                                    )
-                                    .clickable {
-                                        if (draggedCourse == null) {
-                                            triggerVibration()
-                                            onCourseClick(course)
-                                        }
-                                    }
-                                    .padding(horizontal = 4.dp, vertical = 8.dp),
-                                contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
-                            ) {
-                                CourseCardContent(course, textColor, true, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, course.name in homeworkCourseNames, if (isDragging) 0.15f else otherWeekAlpha, verticalLayout)
-                            }
-                        }
-                    }
-
-                    // ── Layer 2b: Current week courses (merged blocks, on top, solid style with drag) ──
-                    val currentBlocks = remember(currentCoursesResolved, currentWeek) {
-                        mergeCourses(currentCoursesResolved, currentWeek).groupBy { it.day }
+                    val mergedBlocks = remember(currentCoursesResolved, nonCurrentResolved, currentWeek) {
+                        mergeCourses(currentCoursesResolved + nonCurrentResolved, currentWeek).groupBy { it.day }
                     }
                     val cellPad = 1.dp
                     val usableWidth = cellWDp - cellPad * 2
 
-                    currentBlocks.forEach { (day, blocks) ->
+                    mergedBlocks.forEach { (day, blocks) ->
                         blocks.forEach { block ->
                             val blockKey = blockKeyOf(block)
+                            val hasActive = block.courses.any { it.isActive }
                             // 默认显示：用户选择的课程 → 第一个本周活跃课 → 块内第一门
                             val mainCourse = block.courses.firstOrNull { it.course.id == conflictActiveIds[blockKey] }?.course
                                 ?: block.courses.firstOrNull { it.isActive }?.course
@@ -396,6 +342,8 @@ fun PeriodGrid(
                             val currentIsConflict by rememberUpdatedState(block.isConflict)
                             val isDragging = block.courses.any { it.course.id == dragAnchorId }
                             val isConflict = block.isConflict
+                            // 整块都是非本周课程 → 虚线幽灵样式（不可拖，保持旧版非本周表现）
+                            val isGhost = !hasActive
 
                             val spanSlots = (block.end - block.start).coerceAtLeast(0.3f)
                             val cardHeightDp = spanSlots * safeGridHeight
@@ -403,6 +351,11 @@ fun PeriodGrid(
                             val textColor = courseTextColor(mainCourse.colorIndex, isDark)
                             val xDp = sidebarDp + cellPad + cellWDp * (day - 1)
                             val yDp = safeGridHeight.dp * (block.start - 1)
+                            val blockAlpha = when {
+                                isDragging -> (if (isGhost) otherWeekAlpha else gridOpacity) * 0.3f
+                                isGhost -> otherWeekAlpha
+                                else -> gridOpacity
+                            }
 
                             Box(
                                 modifier = Modifier
@@ -411,114 +364,128 @@ fun PeriodGrid(
                                     .offset(x = xDp, y = yDp)
                                     .zIndex(10f)
                                     .then(
-                                        if (isDragging) Modifier
+                                        if (isDragging || isGhost) Modifier
                                         else Modifier
                                             .shadow(2.dp, RoundedCornerShape(cornerRadius.dp))
                                     )
                                     .clip(RoundedCornerShape(cornerRadius.dp))
-                                    .background(bgColor.copy(alpha = if (isDragging) gridOpacity * 0.2f else gridOpacity))
+                                    .background(bgColor.copy(alpha = blockAlpha))
                                     .then(
-                                        if (!isDragging && borderStyle > 0) Modifier.drawBehind {
+                                        if (!isDragging) Modifier.drawBehind {
                                             drawRoundRect(
                                                 color = courseBorderColor(mainCourse.colorIndex, isDark),
                                                 cornerRadius = CornerRadius(cornerRadius.dp.toPx()),
                                                 style = Stroke(
-                                                    width = 1.dp.toPx(),
-                                                    pathEffect = if (borderStyle == 2) PathEffect.dashPathEffect(floatArrayOf(6f, 3f), 0f) else null
+                                                    width = if (isGhost) 1.5.dp.toPx() else 1.dp.toPx(),
+                                                    pathEffect = if (isGhost || borderStyle == 2) PathEffect.dashPathEffect(floatArrayOf(6f, 3f), 0f) else null
                                                 )
                                             )
                                         } else Modifier
                                     )
                                     .then(
-                                        // 统一拖拽：冲突块只拖「当前显示的那门课」（拖出即拆开冲突），
-                                        // 非冲突合并块整组拖动；key 只含稳定 id，坐标经 rememberUpdatedState 实时读取
-                                        Modifier
-                                            // key 只含稳定 id（排序后）：位置变化不重建手势 → Flow 回流/坐标变化不杀手势
-                                            .pointerInput(block.courses.map { it.course.id }.sorted()) {
-                                                detectDragGesturesAfterLongPress(
-                                                    onDragStart = {
-                                                        triggerVibration()
-                                                        val anchor = currentMainCourse ?: return@detectDragGesturesAfterLongPress
-                                                        dragAnchorId = anchor.id
-                                                        dragGroupIds = if (currentIsConflict) listOf(anchor.id)
-                                                            else currentBlockCourses.map { it.course.id }
-                                                        dragOffset = Offset.Zero
-                                                        dragTargetDay = anchor.dayOfWeek
-                                                        dragTargetSlot = anchor.startSlot
-                                                    },
-                                                    onDrag = { change, dragAmount ->
-                                                        change.consume()
-                                                        dragOffset += dragAmount
-                                                        val anchorId = dragAnchorId
-                                                        if (anchorId != 0L && cellW > 0f && cellH > 0f) {
-                                                            // 基线取 pending（乐观位）优先，连续快拖不漂移
-                                                            val anchor = currentMainCourse
-                                                            val pending = optimisticMoves[anchorId]
-                                                            val baseDay = pending?.first ?: (anchor?.dayOfWeek ?: 1)
-                                                            val baseStart = pending?.second ?: (anchor?.startSlot ?: 1)
-                                                            val span = ((anchor?.endSlot ?: 0) - (anchor?.startSlot ?: 0)).coerceAtLeast(0)
-                                                            dragTargetDay = (baseDay + (dragOffset.x / cellW).roundToInt()).coerceIn(1, 7)
-                                                            val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
-                                                            dragTargetSlot = (baseStart + (dragOffset.y / cellH).roundToInt()).coerceIn(1, maxSlot)
-                                                        }
-                                                    },
-                                                    onDragEnd = {
-                                                        val anchor = currentMainCourse ?: return@detectDragGesturesAfterLongPress
-                                                        val groupIds = dragGroupIds
-                                                        dragAnchorId = 0L
-                                                        dragGroupIds = emptyList()
-                                                        val dayDelta = (dragOffset.x / cellW).roundToInt()
-                                                        val slotDelta = (dragOffset.y / cellH).roundToInt()
-                                                        dragOffset = Offset.Zero
-                                                        dragTargetDay = 0; dragTargetSlot = 0
-                                                        if (groupIds.isEmpty() || (dayDelta == 0 && slotDelta == 0)) {
-                                                            return@detectDragGesturesAfterLongPress
-                                                        }
-                                                        // 基线：锚点已有 pending 则以 pending 为基线，delta 相对基线算 → 不双重位移
-                                                        val pending = optimisticMoves[anchor.id]
-                                                        val baseDay = pending?.first ?: anchor.dayOfWeek
-                                                        val baseStart = pending?.second ?: anchor.startSlot
-                                                        val span = (anchor.endSlot - anchor.startSlot).coerceAtLeast(0)
-                                                        val targetDay = (baseDay + dayDelta).coerceIn(1, 7)
-                                                        val targetStart = (baseStart + slotDelta).coerceIn(1, (timeSlots.size - span).coerceAtLeast(1))
-                                                        val effDayDelta = targetDay - baseDay
-                                                        val effSlotDelta = targetStart - baseStart
-                                                        if (effDayDelta == 0 && effSlotDelta == 0) return@detectDragGesturesAfterLongPress
-                                                        // 视觉锁定：整组绝对位置（成员各自以 pending ?? 当前坐标为基线，保持相对锚点偏移）
-                                                        val bCourses = currentBlockCourses
-                                                        groupIds.forEach { id ->
-                                                            val member = bCourses.firstOrNull { it.course.id == id }?.course
-                                                            val mPending = optimisticMoves[id]
-                                                            val mBaseDay = mPending?.first ?: (member?.dayOfWeek ?: baseDay)
-                                                            val mBaseStart = mPending?.second ?: (member?.startSlot ?: baseStart)
-                                                            val mSpan = ((member?.endSlot ?: 0) - (member?.startSlot ?: 0)).coerceAtLeast(0)
-                                                            val mTargetDay = (mBaseDay + effDayDelta).coerceIn(1, 7)
-                                                            val mTargetStart = (mBaseStart + effSlotDelta).coerceIn(1, (timeSlots.size - mSpan).coerceAtLeast(1))
-                                                            optimisticMoves = optimisticMoves + (id to Triple(mTargetDay, mTargetStart, mSpan + mTargetStart))
-                                                        }
-                                                        // DB 相对更新（时序免疫：不传实体/绝对坐标，DB 拿当前值加 delta，串行事务按序叠加）
-                                                        onCourseMoved(groupIds, effDayDelta, effSlotDelta)
-                                                    },
-                                                    onDragCancel = {
-                                                        dragAnchorId = 0L
-                                                        dragGroupIds = emptyList()
-                                                        dragOffset = Offset.Zero
-                                                        dragTargetDay = 0; dragTargetSlot = 0
-                                                    }
-                                                )
-                                            }
-                                            .clickable {
+                                        if (isGhost) {
+                                            // 整块非本周：仅点击编辑，不可拖（与旧版非本周表现一致）
+                                            Modifier.clickable {
                                                 if (dragAnchorId == 0L) {
                                                     triggerVibration()
-                                                    if (isConflict) conflictSheet = block
-                                                    else onCourseClick(mainCourse)
+                                                    onCourseClick(mainCourse)
                                                 }
                                             }
+                                        } else {
+                                            // 统一拖拽：冲突块只拖「当前显示的那门课」（拖出即拆开冲突），
+                                            // 非冲突合并块整组拖动；key 只含稳定 id，坐标经 rememberUpdatedState 实时读取
+                                            Modifier
+                                                // key 只含稳定 id（排序后）：位置变化不重建手势 → Flow 回流/坐标变化不杀手势
+                                                .pointerInput(block.courses.map { it.course.id }.sorted()) {
+                                                    detectDragGesturesAfterLongPress(
+                                                        onDragStart = {
+                                                            triggerVibration()
+                                                            val anchor = currentMainCourse ?: return@detectDragGesturesAfterLongPress
+                                                            dragAnchorId = anchor.id
+                                                            dragGroupIds = if (currentIsConflict) listOf(anchor.id)
+                                                                else currentBlockCourses.map { it.course.id }
+                                                            dragOffset = Offset.Zero
+                                                            dragTargetDay = anchor.dayOfWeek
+                                                            dragTargetSlot = anchor.startSlot
+                                                        },
+                                                        onDrag = { change, dragAmount ->
+                                                            change.consume()
+                                                            dragOffset += dragAmount
+                                                            val anchorId = dragAnchorId
+                                                            if (anchorId != 0L && cellW > 0f && cellH > 0f) {
+                                                                // 基线取 pending（乐观位）优先，连续快拖不漂移
+                                                                val anchor = currentMainCourse
+                                                                val pending = optimisticMoves[anchorId]
+                                                                val baseDay = pending?.first ?: (anchor?.dayOfWeek ?: 1)
+                                                                val baseStart = pending?.second ?: (anchor?.startSlot ?: 1)
+                                                                val span = ((anchor?.endSlot ?: 0) - (anchor?.startSlot ?: 0)).coerceAtLeast(0)
+                                                                dragTargetDay = (baseDay + (dragOffset.x / cellW).roundToInt()).coerceIn(1, 7)
+                                                                val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
+                                                                dragTargetSlot = (baseStart + (dragOffset.y / cellH).roundToInt()).coerceIn(1, maxSlot)
+                                                            }
+                                                        },
+                                                        onDragEnd = {
+                                                            val anchor = currentMainCourse ?: return@detectDragGesturesAfterLongPress
+                                                            val groupIds = dragGroupIds
+                                                            dragAnchorId = 0L
+                                                            dragGroupIds = emptyList()
+                                                            val dayDelta = (dragOffset.x / cellW).roundToInt()
+                                                            val slotDelta = (dragOffset.y / cellH).roundToInt()
+                                                            dragOffset = Offset.Zero
+                                                            dragTargetDay = 0; dragTargetSlot = 0
+                                                            if (groupIds.isEmpty() || (dayDelta == 0 && slotDelta == 0)) {
+                                                                return@detectDragGesturesAfterLongPress
+                                                            }
+                                                            // 基线：锚点已有 pending 则以 pending 为基线，delta 相对基线算 → 不双重位移
+                                                            val pending = optimisticMoves[anchor.id]
+                                                            val baseDay = pending?.first ?: anchor.dayOfWeek
+                                                            val baseStart = pending?.second ?: anchor.startSlot
+                                                            val span = (anchor.endSlot - anchor.startSlot).coerceAtLeast(0)
+                                                            val targetDay = (baseDay + dayDelta).coerceIn(1, 7)
+                                                            val targetStart = (baseStart + slotDelta).coerceIn(1, (timeSlots.size - span).coerceAtLeast(1))
+                                                            val effDayDelta = targetDay - baseDay
+                                                            val effSlotDelta = targetStart - baseStart
+                                                            if (effDayDelta == 0 && effSlotDelta == 0) return@detectDragGesturesAfterLongPress
+                                                            // 视觉锁定：整组绝对位置（成员各自以 pending ?? 当前坐标为基线，保持相对锚点偏移）
+                                                            val bCourses = currentBlockCourses
+                                                            groupIds.forEach { id ->
+                                                                val member = bCourses.firstOrNull { it.course.id == id }?.course
+                                                                val mPending = optimisticMoves[id]
+                                                                val mBaseDay = mPending?.first ?: (member?.dayOfWeek ?: baseDay)
+                                                                val mBaseStart = mPending?.second ?: (member?.startSlot ?: baseStart)
+                                                                val mSpan = ((member?.endSlot ?: 0) - (member?.startSlot ?: 0)).coerceAtLeast(0)
+                                                                val mTargetDay = (mBaseDay + effDayDelta).coerceIn(1, 7)
+                                                                val mTargetStart = (mBaseStart + effSlotDelta).coerceIn(1, (timeSlots.size - mSpan).coerceAtLeast(1))
+                                                                optimisticMoves = optimisticMoves + (id to Triple(mTargetDay, mTargetStart, mSpan + mTargetStart))
+                                                            }
+                                                            // DB 相对更新（时序免疫：不传实体/绝对坐标，DB 拿当前值加 delta，串行事务按序叠加）
+                                                            onCourseMoved(groupIds, effDayDelta, effSlotDelta)
+                                                        },
+                                                        onDragCancel = {
+                                                            dragAnchorId = 0L
+                                                            dragGroupIds = emptyList()
+                                                            dragOffset = Offset.Zero
+                                                            dragTargetDay = 0; dragTargetSlot = 0
+                                                        }
+                                                    )
+                                                }
+                                                .clickable {
+                                                    if (dragAnchorId == 0L) {
+                                                        triggerVibration()
+                                                        if (isConflict) conflictSheet = block
+                                                        else onCourseClick(mainCourse)
+                                                    }
+                                                }
+                                        }
                                     )
                                     .padding(horizontal = 4.dp, vertical = 8.dp),
                                 contentAlignment = if (textCentered) Alignment.Center else Alignment.TopStart
                             ) {
-                                CourseCardContent(mainCourse, textColor, false, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, mainCourse.name in homeworkCourseNames, if (isDragging) 0.5f else 1f, verticalLayout)
+                                CourseCardContent(mainCourse, textColor, isGhost, showTeacher, showRoom, showCampus, showOddEven, textCentered, gridTextSize, mainCourse.name in homeworkCourseNames, if (isGhost) otherWeekAlpha else if (isDragging) 0.5f else 1f, verticalLayout)
+                                // 非本周 leftover 局部斜纹遮罩（混合块：活跃课 + 非活跃课剩余区域）
+                                if (!isGhost && block.maskRanges.isNotEmpty()) {
+                                    NonActiveMaskOverlay(block)
+                                }
                                 // 冲突角标：右上角重叠课程数（仅真正的重叠冲突，相邻同名合并不加角标）
                                 if (isConflict) {
                                     ConflictBadge(
@@ -919,4 +886,43 @@ private fun ConflictCoursesSheet(
         }
         Spacer(Modifier.height(16.dp))
     }
+}
+
+/**
+ * 非本周 leftover 局部斜纹遮罩：在块内按 maskRanges 的相对位置画压暗底 + 斜纹。
+ * 几何（visibleRange/maskRanges 并集）已在 merge 纯函数层算好，这里只负责画。
+ */
+@Composable
+private fun NonActiveMaskOverlay(block: MergedCourseBlock) {
+    val isDark = LocalDarkMode.current
+    val total = (block.end - block.start).coerceAtLeast(0.01f)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawBehind {
+                val stripeWidth = 5.dp.toPx()
+                val stripeColor = (if (isDark) Color.White else Color.Black).copy(alpha = 0.08f)
+                val maskBgColor = (if (isDark) Color.Black else Color.White).copy(alpha = 0.35f)
+                block.maskRanges.forEach { range ->
+                    val relTop = ((range.start - block.start) / total).coerceIn(0f, 1f)
+                    val relH = ((range.endInclusive - range.start) / total).coerceAtLeast(0f)
+                    if (relH <= 0f) return@forEach
+                    val topLeft = Offset(0f, relTop * size.height)
+                    val areaSize = Size(size.width, relH * size.height)
+                    // 1. 压暗底色
+                    drawRect(color = maskBgColor, topLeft = topLeft, size = areaSize)
+                    // 2. 斜纹
+                    val brush = Brush.linearGradient(
+                        0.0f to stripeColor,
+                        0.45f to stripeColor,
+                        0.55f to Color.Transparent,
+                        1.0f to Color.Transparent,
+                        start = Offset(0f, 0f),
+                        end = Offset(stripeWidth, stripeWidth),
+                        tileMode = TileMode.Repeated
+                    )
+                    drawRect(brush = brush, topLeft = topLeft, size = areaSize)
+                }
+            }
+    )
 }
