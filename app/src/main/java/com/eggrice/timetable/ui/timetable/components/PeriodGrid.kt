@@ -118,6 +118,8 @@ fun PeriodGrid(
 
     // Drag state
     var draggedCourse by remember { mutableStateOf<CourseEntity?>(null) }
+    // 合并块（相邻同名）整组拖动：拖起时记录块内全部课程，落下时整组按同一位移移动
+    var draggedGroup by remember { mutableStateOf<List<CourseEntity>>(emptyList()) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var dragTargetDay by remember { mutableStateOf(0) }
     var dragTargetSlot by remember { mutableStateOf(0) }
@@ -429,10 +431,13 @@ fun PeriodGrid(
                                             )
                                         } else {
                                             Modifier
-                                                .pointerInput(block.courses.map { it.course.id }) {
+                                                // key 含块位置：课程拖走后块坐标变化 → 手势重建，避免捕获旧 mainCourse
+                                                // （旧版按 (day,startSlot) 分组天然规避；块渲染必须显式带上位置）
+                                                .pointerInput(block.courses.map { it.course.id }, block.start, block.end) {
                                                     detectDragGesturesAfterLongPress(
                                                         onDragStart = {
                                                             triggerVibration()
+                                                            draggedGroup = block.courses.map { it.course }
                                                             draggedCourse = mainCourse
                                                             dragOffset = Offset.Zero
                                                             dragTargetDay = mainCourse.dayOfWeek
@@ -450,23 +455,35 @@ fun PeriodGrid(
                                                             }
                                                         },
                                                         onDragEnd = {
-                                                            val c = draggedCourse
+                                                            val group = draggedGroup
+                                                            val anchor = draggedCourse
                                                             draggedCourse = null
-                                                            if (c != null) {
-                                                                val span = (c.endSlot - c.startSlot).coerceAtLeast(0)
+                                                            draggedGroup = emptyList()
+                                                            if (anchor != null && group.isNotEmpty()) {
+                                                                val span = (anchor.endSlot - anchor.startSlot).coerceAtLeast(0)
                                                                 val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
                                                                 val td = dragTargetDay.coerceIn(1, 7)
                                                                 val ts = dragTargetSlot.coerceIn(1, maxSlot)
                                                                 dragOffset = Offset.Zero
                                                                 dragTargetDay = 0; dragTargetSlot = 0
-                                                                if (td != c.dayOfWeek || ts != c.startSlot) {
-                                                                    optimisticMoves = optimisticMoves + (c.id to Triple(td, ts, c.endSlot - c.startSlot + ts))
-                                                                    onCourseMoved(c, td, ts)
+                                                                val dayDelta = td - anchor.dayOfWeek
+                                                                val slotDelta = ts - anchor.startSlot
+                                                                if (dayDelta != 0 || slotDelta != 0) {
+                                                                    // 整组按同一位移移动（合并块的其余课程跟随），每门课各自 clamp
+                                                                    group.forEach { course ->
+                                                                        val nd = (course.dayOfWeek + dayDelta).coerceIn(1, 7)
+                                                                        val courseSpan = (course.endSlot - course.startSlot).coerceAtLeast(0)
+                                                                        val ns = (course.startSlot + slotDelta)
+                                                                            .coerceIn(1, (timeSlots.size - courseSpan).coerceAtLeast(1))
+                                                                        optimisticMoves = optimisticMoves + (course.id to Triple(nd, ns, course.endSlot - course.startSlot + ns))
+                                                                        onCourseMoved(course, nd, ns)
+                                                                    }
                                                                 }
                                                             }
                                                         },
                                                         onDragCancel = {
                                                             draggedCourse = null
+                                                            draggedGroup = emptyList()
                                                             dragOffset = Offset.Zero
                                                             dragTargetDay = 0; dragTargetSlot = 0
                                                         }
