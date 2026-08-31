@@ -69,6 +69,7 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showFeedbackDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var schoolIndexMsg by remember { mutableStateOf<String?>(null) }
+    var schoolIndexLoading by remember { mutableStateOf(false) }
     var showSchoolRequestDialog by remember { mutableStateOf(false) }
     var showShareExportDialog by remember { mutableStateOf(false) }
     var showAppearance by remember { mutableStateOf(false) }
@@ -694,6 +695,8 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                     }
                     Button(
                         onClick = {
+                            if (schoolIndexLoading) return@Button
+                            schoolIndexLoading = true
                             schoolIndexMsg = null
                             scope.launch {
                                 val result = withContext(Dispatchers.IO) {
@@ -707,12 +710,27 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                                     SchoolIndexUpdater.Result.UpToDate -> schoolIndexMsg = "学校列表已是最新"
                                     is SchoolIndexUpdater.Result.Failed -> schoolIndexMsg = result.message
                                 }
+                                schoolIndexLoading = false
                             }
                         },
+                        enabled = !schoolIndexLoading,
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = accentColor())
                     ) {
-                        Text("更新学校列表", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        if (schoolIndexLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(
+                            if (schoolIndexLoading) "更新中..." else "更新学校列表",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             },
