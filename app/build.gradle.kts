@@ -35,8 +35,8 @@ android {
         applicationId = "com.eggrice.timetable"
         minSdk = 29
         targetSdk = 34
-        versionCode = 191
-        versionName = "11.0.9"
+        versionCode = 192
+        versionName = "11.0.10"
         resourceConfigurations.addAll(listOf("zh-rCN", "zh"))
     }
 
