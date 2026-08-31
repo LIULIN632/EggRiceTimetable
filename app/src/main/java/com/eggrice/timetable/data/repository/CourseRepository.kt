@@ -22,6 +22,9 @@ class CourseRepository(private val dao: CourseDao, private val teacherDao: Teach
     suspend fun getById(id: Long) = dao.getById(id)
     suspend fun insert(course: CourseEntity) = dao.insert(course)
     suspend fun update(course: CourseEntity) = dao.update(course)
+    suspend fun moveByDelta(ids: List<Long>, dayDelta: Int, slotDelta: Int): Int =
+        if (ids.isEmpty() || (dayDelta == 0 && slotDelta == 0)) 0
+        else dao.moveByDelta(ids, dayDelta, slotDelta)
     suspend fun delete(course: CourseEntity) = dao.delete(course)
     suspend fun deleteById(id: Long) = dao.deleteById(id)
     suspend fun deleteAll() = dao.deleteAll()

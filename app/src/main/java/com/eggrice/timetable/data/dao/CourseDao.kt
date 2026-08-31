@@ -31,6 +31,14 @@ interface CourseDao {
     @Update
     suspend fun update(course: CourseEntity)
 
+    /**
+     * 纯相对移动：在数据库当前值上做加法，不依赖调用方快照（对「松手→Flow 回流」窗口时序免疫）。
+     * Room 挂起查询走单一串行事务执行器，多次拖拽的写入按序叠加，不会互相覆盖。
+     * @return 实际更新的行数
+     */
+    @Query("UPDATE courses SET dayOfWeek = dayOfWeek + :dayDelta, startSlot = startSlot + :slotDelta, endSlot = endSlot + :slotDelta WHERE id IN (:ids)")
+    suspend fun moveByDelta(ids: List<Long>, dayDelta: Int, slotDelta: Int): Int
+
     @Update
     suspend fun updateAll(courses: List<CourseEntity>)
 

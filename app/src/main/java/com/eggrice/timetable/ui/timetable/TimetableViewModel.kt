@@ -119,14 +119,15 @@ class TimetableViewModel(
         }
     }
 
-    fun updateCoursePosition(course: CourseEntity, newDay: Int, newStartSlot: Int) {
-        val span = course.endSlot - course.startSlot
+    /**
+     * 拖拽移动：纯相对更新（DAO 在 DB 当前值上做加法，时序免疫）。
+     * @param ids 要移动的课程 id 列表（合并块整组）
+     * @param dayDelta / slotDelta 相对位移
+     */
+    fun moveCoursesByDelta(ids: List<Long>, dayDelta: Int, slotDelta: Int) {
+        if (ids.isEmpty() || (dayDelta == 0 && slotDelta == 0)) return
         viewModelScope.launch {
-            repository.update(course.copy(
-                dayOfWeek = newDay,
-                startSlot = newStartSlot,
-                endSlot = newStartSlot + span
-            ))
+            repository.moveByDelta(ids, dayDelta, slotDelta)
         }
     }
 

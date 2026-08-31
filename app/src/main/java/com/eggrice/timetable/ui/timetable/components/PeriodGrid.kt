@@ -79,7 +79,7 @@ fun PeriodGrid(
     homeworkCourseNames: Set<String> = emptySet(),
     onCourseClick: (CourseEntity) -> Unit,
     onEmptyCellClick: (Int, Int) -> Unit,
-    onCourseMoved: (CourseEntity, Int, Int) -> Unit,
+    onCourseMoved: (List<Long>, Int, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val today = java.time.LocalDate.now()
@@ -116,10 +116,10 @@ fun PeriodGrid(
         }.let { if (it >= 0) it + 1 else -1 }
     }
 
-    // Drag state
-    var draggedCourse by remember { mutableStateOf<CourseEntity?>(null) }
-    // 合并块（相邻同名）整组拖动：拖起时记录块内全部课程，落下时整组按同一位移移动
-    var draggedGroup by remember { mutableStateOf<List<CourseEntity>>(emptyList()) }
+    // Drag state — 只存 id，绝不持有实体快照（「松手→Flow 回流」窗口期里快照坐标是旧的）
+    var dragAnchorId by remember { mutableStateOf(0L) }
+    // 合并块（相邻同名）整组拖动：拖起时记录块内全部课程 id，落下时整组按同一位移移动
+    var dragGroupIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var dragTargetDay by remember { mutableStateOf(0) }
     var dragTargetSlot by remember { mutableStateOf(0) }
@@ -130,11 +130,7 @@ fun PeriodGrid(
     // Optimistic position overrides — applied immediately on drag end,
     // cleared when the underlying course list syncs from DB.
     var optimisticMoves by remember { mutableStateOf(mapOf<Long, Triple<Int, Int, Int>>()) }
-    // Clear optimistic moves when courses list changes (DB sync complete)
     val coursesKey = remember(courses) { courses.hashCode() }
-    LaunchedEffect(coursesKey) {
-        if (optimisticMoves.isNotEmpty()) optimisticMoves = emptyMap()
-    }
 
     // P0 冲突块状态：底部弹窗 + 块内当前显示课程（默认主课程）
     var conflictSheet by remember { mutableStateOf<MergedCourseBlock?>(null) }
@@ -152,6 +148,23 @@ fun PeriodGrid(
     val currentCourseIds = remember(courses) { courses.map { it.id }.toSet() }
     val nonCurrentIds = remember(allDisplayCourses, currentCourseIds) {
         allDisplayCourses.map { it.id }.toSet() - currentCourseIds
+    }
+
+    // DB 确认才清除：仅清除「DB 坐标已等于乐观坐标」的条目 → 无「清 offset 等 DB」的闪回窗口；
+    // 未确认的保留（连续快拖时上一次的乐观位是下一次的基线）
+    LaunchedEffect(coursesKey) {
+        if (optimisticMoves.isNotEmpty()) {
+            val confirmed = optimisticMoves.filter { (id, move) ->
+                val db = allDisplayCourses.firstOrNull { it.id == id } ?: return@filter false
+                db.dayOfWeek == move.first && db.startSlot == move.second
+            }
+            if (confirmed.isNotEmpty()) optimisticMoves = optimisticMoves - confirmed.keys
+        }
+    }
+
+    // 拖拽锚点实体：由 id 派生，永远取最新（浮层卡片/自动滚动/拖拽高亮用），不持有旧快照
+    val draggedCourse = remember(dragAnchorId, allDisplayCourses) {
+        allDisplayCourses.firstOrNull { it.id == dragAnchorId }
     }
 
     val cellW = remember(gridPixelWidth, sidebarWidthPx) {
@@ -379,7 +392,10 @@ fun PeriodGrid(
                                 ?: block.courses.firstOrNull { it.isActive }?.course
                                 ?: block.courses.firstOrNull()?.course
                                 ?: return@forEach
-                            val isDragging = block.courses.any { it.course.id == draggedCourse?.id }
+                            // 手势 lambda 经 rememberUpdatedState 实时读取最新块/课程，不持有旧快照
+                            val currentMainCourse by rememberUpdatedState(mainCourse)
+                            val currentBlockCourses by rememberUpdatedState(block.courses)
+                            val isDragging = block.courses.any { it.course.id == dragAnchorId }
                             val isConflict = block.isConflict
 
                             val spanSlots = (block.end - block.start).coerceAtLeast(0.3f)
@@ -420,7 +436,7 @@ fun PeriodGrid(
                                             // 点击进弹窗切换，长按提示先解决冲突
                                             Modifier.combinedClickable(
                                                 onClick = {
-                                                    if (draggedCourse == null) {
+                                                    if (dragAnchorId == 0L) {
                                                         triggerVibration()
                                                         conflictSheet = block
                                                     }
@@ -431,66 +447,82 @@ fun PeriodGrid(
                                             )
                                         } else {
                                             Modifier
-                                                // key 含块位置：课程拖走后块坐标变化 → 手势重建，避免捕获旧 mainCourse
-                                                // （旧版按 (day,startSlot) 分组天然规避；块渲染必须显式带上位置）
-                                                .pointerInput(block.courses.map { it.course.id }, block.start, block.end) {
+                                                // key 只含稳定 id（排序后）：位置变化不重建手势 → Flow 回流/坐标变化不杀手势；
+                                                // 块坐标经 rememberUpdatedState 实时读取，杜绝旧快照竞态
+                                                .pointerInput(block.courses.map { it.course.id }.sorted()) {
                                                     detectDragGesturesAfterLongPress(
                                                         onDragStart = {
                                                             triggerVibration()
-                                                            draggedGroup = block.courses.map { it.course }
-                                                            draggedCourse = mainCourse
+                                                            val anchor = currentMainCourse ?: return@detectDragGesturesAfterLongPress
+                                                            dragAnchorId = anchor.id
+                                                            dragGroupIds = currentBlockCourses.map { it.course.id }
                                                             dragOffset = Offset.Zero
-                                                            dragTargetDay = mainCourse.dayOfWeek
-                                                            dragTargetSlot = mainCourse.startSlot
+                                                            dragTargetDay = anchor.dayOfWeek
+                                                            dragTargetSlot = anchor.startSlot
                                                         },
                                                         onDrag = { change, dragAmount ->
                                                             change.consume()
                                                             dragOffset += dragAmount
-                                                            val c = draggedCourse ?: return@detectDragGesturesAfterLongPress
-                                                            if (cellW > 0f && cellH > 0f) {
-                                                                dragTargetDay = (c.dayOfWeek + (dragOffset.x / cellW).roundToInt()).coerceIn(1, 7)
-                                                                val span = (c.endSlot - c.startSlot).coerceAtLeast(0)
+                                                            val anchorId = dragAnchorId
+                                                            if (anchorId != 0L && cellW > 0f && cellH > 0f) {
+                                                                // 基线取 pending（乐观位）优先，连续快拖不漂移
+                                                                val anchor = currentMainCourse
+                                                                val pending = optimisticMoves[anchorId]
+                                                                val baseDay = pending?.first ?: (anchor?.dayOfWeek ?: 1)
+                                                                val baseStart = pending?.second ?: (anchor?.startSlot ?: 1)
+                                                                val span = ((anchor?.endSlot ?: 0) - (anchor?.startSlot ?: 0)).coerceAtLeast(0)
+                                                                dragTargetDay = (baseDay + (dragOffset.x / cellW).roundToInt()).coerceIn(1, 7)
                                                                 val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
-                                                                dragTargetSlot = (c.startSlot + (dragOffset.y / cellH).roundToInt()).coerceIn(1, maxSlot)
+                                                                dragTargetSlot = (baseStart + (dragOffset.y / cellH).roundToInt()).coerceIn(1, maxSlot)
                                                             }
                                                         },
                                                         onDragEnd = {
-                                                            val group = draggedGroup
-                                                            val anchor = draggedCourse
-                                                            draggedCourse = null
-                                                            draggedGroup = emptyList()
-                                                            if (anchor != null && group.isNotEmpty()) {
-                                                                val span = (anchor.endSlot - anchor.startSlot).coerceAtLeast(0)
-                                                                val maxSlot = (timeSlots.size - span).coerceAtLeast(1)
-                                                                val td = dragTargetDay.coerceIn(1, 7)
-                                                                val ts = dragTargetSlot.coerceIn(1, maxSlot)
-                                                                dragOffset = Offset.Zero
-                                                                dragTargetDay = 0; dragTargetSlot = 0
-                                                                val dayDelta = td - anchor.dayOfWeek
-                                                                val slotDelta = ts - anchor.startSlot
-                                                                if (dayDelta != 0 || slotDelta != 0) {
-                                                                    // 整组按同一位移移动（合并块的其余课程跟随），每门课各自 clamp
-                                                                    group.forEach { course ->
-                                                                        val nd = (course.dayOfWeek + dayDelta).coerceIn(1, 7)
-                                                                        val courseSpan = (course.endSlot - course.startSlot).coerceAtLeast(0)
-                                                                        val ns = (course.startSlot + slotDelta)
-                                                                            .coerceIn(1, (timeSlots.size - courseSpan).coerceAtLeast(1))
-                                                                        optimisticMoves = optimisticMoves + (course.id to Triple(nd, ns, course.endSlot - course.startSlot + ns))
-                                                                        onCourseMoved(course, nd, ns)
-                                                                    }
-                                                                }
+                                                            val anchor = currentMainCourse ?: return@detectDragGesturesAfterLongPress
+                                                            val groupIds = dragGroupIds
+                                                            dragAnchorId = 0L
+                                                            dragGroupIds = emptyList()
+                                                            val dayDelta = (dragOffset.x / cellW).roundToInt()
+                                                            val slotDelta = (dragOffset.y / cellH).roundToInt()
+                                                            dragOffset = Offset.Zero
+                                                            dragTargetDay = 0; dragTargetSlot = 0
+                                                            if (groupIds.isEmpty() || (dayDelta == 0 && slotDelta == 0)) {
+                                                                return@detectDragGesturesAfterLongPress
                                                             }
+                                                            // 基线：锚点已有 pending 则以 pending 为基线，delta 相对基线算 → 不双重位移
+                                                            val pending = optimisticMoves[anchor.id]
+                                                            val baseDay = pending?.first ?: anchor.dayOfWeek
+                                                            val baseStart = pending?.second ?: anchor.startSlot
+                                                            val span = (anchor.endSlot - anchor.startSlot).coerceAtLeast(0)
+                                                            val targetDay = (baseDay + dayDelta).coerceIn(1, 7)
+                                                            val targetStart = (baseStart + slotDelta).coerceIn(1, (timeSlots.size - span).coerceAtLeast(1))
+                                                            val effDayDelta = targetDay - baseDay
+                                                            val effSlotDelta = targetStart - baseStart
+                                                            if (effDayDelta == 0 && effSlotDelta == 0) return@detectDragGesturesAfterLongPress
+                                                            // 视觉锁定：整组绝对位置（成员各自以 pending ?? 当前坐标为基线，保持相对锚点偏移）
+                                                            val bCourses = currentBlockCourses
+                                                            groupIds.forEach { id ->
+                                                                val member = bCourses.firstOrNull { it.course.id == id }?.course
+                                                                val mPending = optimisticMoves[id]
+                                                                val mBaseDay = mPending?.first ?: (member?.dayOfWeek ?: baseDay)
+                                                                val mBaseStart = mPending?.second ?: (member?.startSlot ?: baseStart)
+                                                                val mSpan = ((member?.endSlot ?: 0) - (member?.startSlot ?: 0)).coerceAtLeast(0)
+                                                                val mTargetDay = (mBaseDay + effDayDelta).coerceIn(1, 7)
+                                                                val mTargetStart = (mBaseStart + effSlotDelta).coerceIn(1, (timeSlots.size - mSpan).coerceAtLeast(1))
+                                                                optimisticMoves = optimisticMoves + (id to Triple(mTargetDay, mTargetStart, mSpan + mTargetStart))
+                                                            }
+                                                            // DB 相对更新（时序免疫：不传实体/绝对坐标，DB 拿当前值加 delta，串行事务按序叠加）
+                                                            onCourseMoved(groupIds, effDayDelta, effSlotDelta)
                                                         },
                                                         onDragCancel = {
-                                                            draggedCourse = null
-                                                            draggedGroup = emptyList()
+                                                            dragAnchorId = 0L
+                                                            dragGroupIds = emptyList()
                                                             dragOffset = Offset.Zero
                                                             dragTargetDay = 0; dragTargetSlot = 0
                                                         }
                                                     )
                                                 }
                                                 .clickable {
-                                                    if (draggedCourse == null) {
+                                                    if (dragAnchorId == 0L) {
                                                         triggerVibration()
                                                         onCourseClick(mainCourse)
                                                     }
@@ -550,10 +582,11 @@ fun PeriodGrid(
             }
         }
 
-        // Autoscroll while dragging near edges
-        LaunchedEffect(draggedCourse) {
+        // Autoscroll while dragging near edges（key/循环条件用真实状态 dragAnchorId，派生 val 是常量）
+        LaunchedEffect(dragAnchorId) {
+            if (dragAnchorId == 0L) return@LaunchedEffect
             val course = draggedCourse ?: return@LaunchedEffect
-            while (draggedCourse != null) {
+            while (dragAnchorId != 0L) {
                 val scrollPx = scrollState.value.toFloat()
                 val courseStartYPx = (course.startSlot - 1) * cellH
                 val dragYInView = courseStartYPx + dragOffset.y - scrollPx

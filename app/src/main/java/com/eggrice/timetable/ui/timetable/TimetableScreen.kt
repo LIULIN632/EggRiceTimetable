@@ -296,7 +296,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                         homeworkCourseNames = homeworkCourseNames.toSet(),
                         onCourseClick = { viewModel.openEditEditor(it) },
                         onEmptyCellClick = { day, slot -> viewModel.openAddEditor(day, slot) },
-                        onCourseMoved = { course, newDay, newSlot -> viewModel.updateCoursePosition(course, newDay, newSlot) },
+                        onCourseMoved = { ids, dayDelta, slotDelta -> viewModel.moveCoursesByDelta(ids, dayDelta, slotDelta) },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
