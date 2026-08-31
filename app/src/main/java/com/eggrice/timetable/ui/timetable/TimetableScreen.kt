@@ -7,6 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +19,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -65,6 +69,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     val courses by viewModel.allCourses.collectAsState()
     val timeSlots by viewModel.allTimeSlots.collectAsState()
     val currentWeek by viewModel.currentWeek.collectAsState()
+    val semesterTotalWeeks by viewModel.semesterTotalWeeks.collectAsState()
     val editingCourse by viewModel.editingCourse.collectAsState()
     val showEditor by viewModel.showEditor.collectAsState()
     var showDeleteRangeDialog by remember { mutableStateOf(false) }
@@ -129,6 +134,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     var showAddHomework by remember { mutableStateOf(false) }
     var showTaskPreview by remember { mutableStateOf(false) }
     var showSemesterSettings by remember { mutableStateOf(false) }
+    var showWeekPicker by remember { mutableStateOf(false) }
 
     val pendingTasks = remember(allTasks) { allTasks.filter { !it.completed } }
     val pendingCount = pendingTasks.size
@@ -136,6 +142,23 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     // Hide bottom nav + handle system back when semester settings is open
     LaunchedEffect(showSemesterSettings) { onSubPageChange(showSemesterSettings) }
     BackHandler(enabled = showSemesterSettings) { showSemesterSettings = false }
+
+    // 周次快速跳转选择器（点击顶部「第N周」弹出）
+    if (showWeekPicker) {
+        WeekPickerSheet(
+            currentWeek = currentWeek,
+            totalWeeks = semesterTotalWeeks.coerceAtLeast(1),
+            onSelect = { week ->
+                showWeekPicker = false
+                viewModel.goToWeek(week)
+            },
+            onSemesterSettings = {
+                showWeekPicker = false
+                showSemesterSettings = true
+            },
+            onDismiss = { showWeekPicker = false }
+        )
+    }
 
     // Full-screen semester settings overlay
     if (showSemesterSettings) {
@@ -206,7 +229,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
                         .clickable(
                             interactionSource = weekInteractionSource,
                             indication = null
-                        ) { showSemesterSettings = true }
+                        ) { showWeekPicker = true }
                         .scale(weekScale)
                         .padding(vertical = 1.dp, horizontal = 4.dp)
                 ) {
@@ -706,6 +729,82 @@ fun DeleteRangeDialog(
             }
         }
     )
+}
+
+// ── 周次快速跳转选择器（点击顶部「第N周」弹出，对标时光课表）──
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WeekPickerSheet(
+    currentWeek: Int,
+    totalWeeks: Int,
+    onSelect: (Int) -> Unit,
+    onSemesterSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalEggRiceColors.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Text(
+            "跳转到周次",
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            color = colors.textPrimary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        )
+        Text(
+            "当前第 $currentWeek 周 · 共 $totalWeeks 周",
+            fontSize = 12.sp,
+            color = colors.textTertiary,
+            modifier = Modifier.padding(start = 16.dp, bottom = 10.dp)
+        )
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(7),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 330.dp)
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(count = totalWeeks) { index ->
+                val week = index + 1
+                val isCurrent = week == currentWeek
+                Box(
+                    modifier = Modifier
+                        .aspectRatio(1.5f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isCurrent) colors.accentMain else colors.surfaceHighlight)
+                        .clickable { onSelect(week) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "$week",
+                        fontSize = 14.sp,
+                        fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (isCurrent) colors.surfaceCard else colors.textPrimary
+                    )
+                }
+            }
+        }
+        HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
+        TextButton(
+            onClick = onSemesterSettings,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
+            Icon(
+                Icons.Filled.Settings,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = colors.textSecondary
+            )
+            Spacer(Modifier.width(6.dp))
+            Text("学期设置（开学日期 / 周数）", fontSize = 13.sp, color = colors.textSecondary)
+        }
+        Spacer(Modifier.height(12.dp))
+    }
 }
 
 
