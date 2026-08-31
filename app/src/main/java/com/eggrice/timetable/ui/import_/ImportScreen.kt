@@ -82,6 +82,8 @@ fun ImportScreen(
     var customSchoolName by remember { mutableStateOf("") }
     var customSchoolUrl by remember { mutableStateOf("") }
     var pendingCustomSchool by remember { mutableStateOf<School?>(null) }
+    var editingCustomSchool by remember { mutableStateOf<School?>(null) }
+    var schoolToDelete by remember { mutableStateOf<School?>(null) }
     var customJwType by remember { mutableStateOf<JwSystemType?>(null) }
 
     val filteredSchools by viewModel.filteredSchools.collectAsState()
@@ -123,6 +125,16 @@ fun ImportScreen(
         } else {
             viewModel.selectSchool(school)
         }
+    }
+
+    // 打开自定义学校编辑弹窗（预填名称/地址/类型）
+    fun openEditCustomSchool(school: School) {
+        editingCustomSchool = school
+        customSchoolName = school.name
+        customSchoolUrl = school.baseUrl.trimEnd('/')
+            .removePrefix("https://").removePrefix("http://")
+        customJwType = school.jwType
+        showAddCustomSchool = true
     }
 
     // Auto-load saved credentials when school changes
@@ -246,12 +258,15 @@ fun ImportScreen(
                         items(favSchools.size) { idx ->
                             val school = favSchools[idx]
                             val isSelected = selectedSchool == school
+                            val isCustom = school.id.startsWith("custom_")
                             SchoolRow(
                                 school = school,
                                 isSelected = isSelected,
                                 isFavorite = true,
                                 onSelect = { onSchoolClick(school) },
-                                onToggleFavorite = { viewModel.toggleFavorite(school) }
+                                onToggleFavorite = { viewModel.toggleFavorite(school) },
+                                onEdit = if (isCustom) { { openEditCustomSchool(school) } } else null,
+                                onDelete = if (isCustom) { { schoolToDelete = school } } else null
                             )
                             HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
                         }
@@ -277,12 +292,15 @@ fun ImportScreen(
                     items(otherSchools.size) { idx ->
                         val school = otherSchools[idx]
                         val isSelected = selectedSchool == school
+                        val isCustom = school.id.startsWith("custom_")
                         SchoolRow(
                             school = school,
                             isSelected = isSelected,
                             isFavorite = school.id in favoriteIds,
                             onSelect = { onSchoolClick(school) },
-                            onToggleFavorite = { viewModel.toggleFavorite(school) }
+                            onToggleFavorite = { viewModel.toggleFavorite(school) },
+                            onEdit = if (isCustom) { { openEditCustomSchool(school) } } else null,
+                            onDelete = if (isCustom) { { schoolToDelete = school } } else null
                         )
                         HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
                     }
@@ -474,20 +492,26 @@ fun ImportScreen(
             onDismissRequest = {
                 showAddCustomSchool = false
                 pendingCustomSchool = null
+                editingCustomSchool = null
             },
             title = {
                 Text(
-                    if (pendingCustomSchool != null) "完善学校信息" else "添加自定义学校",
+                    when {
+                        editingCustomSchool != null -> "编辑自定义学校"
+                        pendingCustomSchool != null -> "完善学校信息"
+                        else -> "添加自定义学校"
+                    },
                     fontWeight = FontWeight.ExtraBold
                 )
             },
             text = {
                 Column {
                     Text(
-                        if (pendingCustomSchool != null)
-                            "该学校暂未收录教务地址，填写后即可导入。"
-                        else
-                            "学校未收录？手动填写教务系统地址即可添加。",
+                        when {
+                            editingCustomSchool != null -> "修改学校名称或教务系统地址，保存后立即生效。"
+                            pendingCustomSchool != null -> "该学校暂未收录教务地址，填写后即可导入。"
+                            else -> "学校未收录？手动填写教务系统地址即可添加。"
+                        },
                         fontSize = 12.sp,
                         color = colors.textTertiary
                     )
@@ -537,26 +561,63 @@ fun ImportScreen(
                 Button(
                     onClick = {
                         val type = customJwType ?: system ?: JwSystemType.ZHENGFANG
-                        val newSchool = viewModel.addCustomSchool(customSchoolName, customSchoolUrl, type)
-                        if (newSchool != null) {
-                            viewModel.selectSchool(newSchool)
-                            Toast.makeText(context, "已添加自定义学校", Toast.LENGTH_SHORT).show()
+                        when {
+                            editingCustomSchool != null -> {
+                                val updated = viewModel.updateCustomSchool(editingCustomSchool!!, customSchoolName, customSchoolUrl)
+                                if (updated != null) {
+                                    viewModel.selectSchool(updated)
+                                    Toast.makeText(context, "已更新自定义学校", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            else -> {
+                                val newSchool = viewModel.addCustomSchool(customSchoolName, customSchoolUrl, type)
+                                if (newSchool != null) {
+                                    viewModel.selectSchool(newSchool)
+                                    Toast.makeText(context, "已添加自定义学校", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
                         customSchoolName = ""
                         customSchoolUrl = ""
                         customJwType = null
                         pendingCustomSchool = null
+                        editingCustomSchool = null
                         showAddCustomSchool = false
                     },
                     enabled = customSchoolName.isNotBlank() && customSchoolUrl.isNotBlank(),
                     colors = ButtonDefaults.buttonColors(containerColor = accentColor())
-                ) { Text("添加") }
+                ) { Text(if (editingCustomSchool != null) "保存" else "添加") }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showAddCustomSchool = false
                     pendingCustomSchool = null
+                    editingCustomSchool = null
                 }) { Text("取消") }
+            }
+        )
+    }
+
+    // Delete-custom-school confirm dialog
+    if (schoolToDelete != null) {
+        val target = schoolToDelete!!
+        AlertDialog(
+            onDismissRequest = { schoolToDelete = null },
+            title = { Text("删除自定义学校", fontWeight = FontWeight.ExtraBold) },
+            text = { Text("确定要删除「${target.name}」吗？删除后需重新添加才能使用。") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.removeCustomSchool(target)
+                        if (selectedSchool?.id == target.id) viewModel.selectSchool(null)
+                        Toast.makeText(context, "已删除自定义学校", Toast.LENGTH_SHORT).show()
+                        schoolToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE57373))
+                ) { Text("删除", color = Color.White) }
+            },
+            dismissButton = {
+                TextButton(onClick = { schoolToDelete = null }) { Text("取消") }
             }
         )
     }
@@ -684,7 +745,9 @@ private fun SchoolRow(
     isSelected: Boolean,
     isFavorite: Boolean,
     onSelect: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
 ) {
     val colors = LocalEggRiceColors.current
     Row(
@@ -715,6 +778,16 @@ private fun SchoolRow(
             isFavorite = isFavorite,
             onToggle = onToggleFavorite
         )
+        if (onEdit != null) {
+            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Outlined.Edit, "编辑", tint = colors.textSecondary, modifier = Modifier.size(16.dp))
+            }
+        }
+        if (onDelete != null) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Outlined.Delete, "删除", tint = Color(0xFFE57373), modifier = Modifier.size(16.dp))
+            }
+        }
         if (isSelected) {
             Icon(
                 Icons.Outlined.CheckCircle,

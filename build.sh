@@ -22,19 +22,25 @@ fi
 
 echo "当前版本: v$VN ($VC)"
 
-# 2. 版本号递增
+# 2. 版本号递增（三段式 X.Y.Z：Patch +1，每段上限 99，如 1.99.99）
 NEW_VC=$((VC + 1))
 MAJOR=$(echo "$VN" | cut -d. -f1)
 MINOR=$(echo "$VN" | cut -d. -f2)
-NEW_MINOR=$((MINOR + 1))
+PATCH=$(echo "$VN" | cut -d. -f3)
+PATCH=${PATCH:-0}
 
-if [ "$NEW_MINOR" -ge 10 ]; then
-    NEW_MAJOR=$((MAJOR + 1))
-    NEW_MINOR=0
-else
-    NEW_MAJOR=$MAJOR
+NEW_PATCH=$((PATCH + 1))
+NEW_MINOR=$MINOR
+NEW_MAJOR=$MAJOR
+if [ "$NEW_PATCH" -gt 99 ]; then
+    NEW_PATCH=0
+    NEW_MINOR=$((MINOR + 1))
 fi
-NEW_VN="$NEW_MAJOR.$NEW_MINOR"
+if [ "$NEW_MINOR" -gt 99 ]; then
+    NEW_MINOR=0
+    NEW_MAJOR=$((MAJOR + 1))
+fi
+NEW_VN="$NEW_MAJOR.$NEW_MINOR.$NEW_PATCH"
 
 echo "新版本:   v$NEW_VN ($NEW_VC)"
 

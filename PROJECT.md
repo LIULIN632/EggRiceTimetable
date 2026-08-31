@@ -30,13 +30,14 @@ app/src/main/java/com/eggrice/timetable/
 │   ├── timetable/          — 课程表主页 + 组件
 │   ├── import_/            — 教务导入页面
 │   ├── profile/            — 个人页 + 设置
-│   ├── treasurebox/        — 百宝箱
+│   ├── treasurebox/        — 百宝箱（含成绩查询/修课情况/成绩存档页面）
+│   ├── zhengfang/          — 正方「只登录」流程共享组件（ZhengfangLoginViewModel/Ui）
 │   └── theme/              — Color.kt + Theme.kt
 ├── data/
 │   ├── db/                 — Room 数据库 + DAO
 │   ├── entity/             — 数据实体
 │   └── repository/         — 数据仓库
-├── network/                — OkHttp 教务爬虫
+├── network/                — OkHttp 教务爬虫（ZhengfangUtils 公共工具）
 ├── di/                     — AppContainer 依赖注入
 └── util/                   — 工具类
 ```
@@ -52,9 +53,18 @@ app/src/main/java/com/eggrice/timetable/
 
 ### 教务系统导入
 - [x] 正方教务：RSA 加密登录 → 验证码识别 → JSON API → 课程解析
+- [x] 正方教务：成功组合记忆（ZhengfangImportMemory，跨会话 30 天 TTL，导入提速）
 - [x] 强智教务：WebView 导航 → 页面注入 → HTML 解析
 - [x] 青果教务：WebView 导航 → 页面注入 → HTML 解析
 - [x] 超星教务：WebView 导航 → 页面注入 → HTML 解析
+- [x] 自定义学校：添加 / 编辑 / 删除
+
+### 正方教务查询（试验阶段，仅登录不拉课表）
+- [x] 成绩查询：学期列表 + 总评/平时/期末/期中分项，字段别名容错
+- [x] 修课情况查询：GPA / 计划内完成统计 / 各类型学分 / 课程明细（正方 v9 xsxy）
+- [x] 成绩存档：一键同步全部学期成绩 → 本地 Room 离线查看（SavedGradeEntity）
+- [x] 账号密码加密记忆（EncryptedSharedPreferences，跨页面复用登录会话）
+- [x] 登录/选校/验证码流程共享组件：ui/zhengfang/（ZhengfangLoginViewModel + ZhengfangLoginUi）
 
 ### 多渠道导入/导出
 - [x] Excel 导入 (.xlsx/.xls)
@@ -116,6 +126,25 @@ data class TimeSlotEntity(
     val startTime: String,  // 开始时间 HH:mm
     val endTime: String,    // 结束时间 HH:mm
     val schemeId: Long,     // 所属方案
+)
+```
+
+### SavedGradeEntity（成绩存档，v11 新增）
+```kotlin
+@Entity(tableName = "saved_grades",
+        indices = [Index(value = ["courseName", "termLabel", "totalScore"], unique = true)])
+data class SavedGradeEntity(
+    val courseName: String, // 课程名称
+    val totalScore: String, // 总评成绩
+    val credits: String,    // 学分
+    val gpa: String,        // 绩点
+    val regular: String,    // 平时分
+    val final: String,      // 期末分
+    val midterm: String,    // 期中分
+    val examType: String,   // 考试性质
+    val termLabel: String,  // 学年学期标签
+    val schoolName: String, // 学校名称
+    val savedAt: Long,      // 保存时间
 )
 ```
 

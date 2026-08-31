@@ -165,6 +165,12 @@ class ZhengfangClient {
                     builder.header("Referer", "$origin$refererPath")
                     builder.header("X-Requested-With", "XMLHttpRequest")
                 }
+                if (path.contains("/xsxy/")) {
+                    val origin = "${url.scheme}://${url.host}" +
+                            (if (url.port != 80 && url.port != 443) ":${url.port}" else "")
+                    val prefix = path.substringBefore("/xsxy/")
+                    builder.header("Referer", "$origin$prefix/xsxy/xsxyqk_cxXsxyqkIndex.html?gnmkdm=N105515&layout=default")
+                }
 
                 chain.proceed(builder.build())
             }
@@ -268,17 +274,56 @@ class ZhengfangClient {
 
     private fun urlEncode(s: String): String = URLEncoder.encode(s, "UTF-8")
 
+    /**
+     * 判断响应是否为验证码图片。Content-Type 明确为 image 类型时直接信任；
+     * 无/未知 Content-Type 时用图片魔数严格校验（PNG/JPEG/GIF），
+     * 避免把「无验证码学校」的错误响应/HTML 提示误判成验证码（曾导致弹无用验证码窗）。
+     */
+    private fun looksLikeCaptchaImage(bytes: ByteArray, contentType: String, contentLength: Int): Boolean {
+        if (bytes.isEmpty() || bytes.size <= 80) return false
+        val ct = contentType.lowercase()
+        if (ct.contains("text/html") || ct.contains("application/json") || ct.contains("text/plain")) return false
+        if (ct.contains("image")) return true
+        // 无 Content-Type：魔数校验（PNG 89 50 4E 47 / JPEG FF D8 / GIF 47 49 46）
+        return bytes.size >= 4 &&
+            ((bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()) ||
+             (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) ||
+             (bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte()))
+    }
+
+    /** 登录并拉取课表（教务导入用） */
     suspend fun login(
         school: ZhengfangSchool,
         username: String,
         password: String,
         onProgress: (String) -> Unit = {},
         onCaptcha: (suspend (CaptchaResult) -> String)? = null
+    ): LoginResult = loginWithRetry(school, username, password, onProgress, onCaptcha, fetchSchedule = true)
+
+    /**
+     * 只登录建立会话，不拉课表（成绩查询等仅需会话的场景用）。
+     * 登录成功后 Cookie 保留在实例内，后续用同一 client 调成绩接口即可。
+     */
+    suspend fun loginOnly(
+        school: ZhengfangSchool,
+        username: String,
+        password: String,
+        onProgress: (String) -> Unit = {},
+        onCaptcha: (suspend (CaptchaResult) -> String)? = null
+    ): LoginResult = loginWithRetry(school, username, password, onProgress, onCaptcha, fetchSchedule = false)
+
+    private suspend fun loginWithRetry(
+        school: ZhengfangSchool,
+        username: String,
+        password: String,
+        onProgress: (String) -> Unit,
+        onCaptcha: (suspend (CaptchaResult) -> String)?,
+        fetchSchedule: Boolean
     ): LoginResult {
         var lastResult: LoginResult? = null
         for (attempt in 1..2) {
             if (attempt > 1) onProgress("网络不稳定，正在重试...")
-            val result = tryLogin(school, username, password, onProgress, onCaptcha)
+            val result = tryLogin(school, username, password, onProgress, onCaptcha, fetchSchedule)
             if (result.success || result.error == null) return result
             val isNetworkError = result.error.contains("无法连接") ||
                     result.error.contains("超时") ||
@@ -297,7 +342,8 @@ class ZhengfangClient {
         username: String,
         password: String,
         onProgress: (String) -> Unit,
-        onCaptcha: (suspend (CaptchaResult) -> String)?
+        onCaptcha: (suspend (CaptchaResult) -> String)?,
+        fetchSchedule: Boolean = true
     ): LoginResult = withContext(Dispatchers.IO) {
         cookieStore.clear()
 
@@ -391,13 +437,7 @@ class ZhengfangClient {
                             val responseBytes = res.body?.bytes() ?: ByteArray(0)
                             val contentType = res.header("Content-Type") ?: ""
                             val contentLength = res.header("Content-Length")?.toIntOrNull() ?: 0
-                            val isTextPage = contentType.contains("text/html", ignoreCase = true) ||
-                                contentType.contains("application/json", ignoreCase = true)
-                            val looksLikeImage = responseBytes.isNotEmpty() && responseBytes.size > 80 &&
-                                !isTextPage &&
-                                ((contentType.isNotEmpty() && contentType.contains("image", ignoreCase = true)) ||
-                                 (contentType.isEmpty() && responseBytes[0] != 0x3C.toByte() && responseBytes[0] != 0x7B.toByte()) ||
-                                 (contentLength > 80 && contentType.isEmpty()))
+                            val looksLikeImage = looksLikeCaptchaImage(responseBytes, contentType, contentLength)
                             if (looksLikeImage) { captchaSuccess = true }
                             responseBytes
                         }
@@ -435,12 +475,8 @@ class ZhengfangClient {
                                     refreshBytes = get("$refreshUrl?time=${System.currentTimeMillis()}").use { res ->
                                         val bytes = res.body?.bytes() ?: ByteArray(0)
                                         val refreshContentType = res.header("Content-Type") ?: ""
-                                        val isTextPage = refreshContentType.contains("text/html", ignoreCase = true) ||
-                                            refreshContentType.contains("application/json", ignoreCase = true)
-                                        val looksLikeImage = bytes.isNotEmpty() && bytes.size > 80 &&
-                                            !isTextPage &&
-                                            ((refreshContentType.isNotEmpty() && refreshContentType.contains("image", ignoreCase = true)) ||
-                                             (refreshContentType.isEmpty() && bytes[0] != 0x3C.toByte() && bytes[0] != 0x7B.toByte()))
+                                        val refreshContentLength = res.header("Content-Length")?.toIntOrNull() ?: 0
+                                        val looksLikeImage = looksLikeCaptchaImage(bytes, refreshContentType, refreshContentLength)
                                         if (looksLikeImage) { refreshSuccess = true }
                                         bytes
                                     }
@@ -448,8 +484,9 @@ class ZhengfangClient {
                                 }
                                 if (refreshSuccess) break
                             } catch (_: Exception) {
-                                // 用普通 IOException 表达失败，让上层能显示错误而不是当取消静默吞掉
-                                if (retry >= 4) throw IOException("验证码刷新失败")
+                                // 刷新失败不致命：返回当前拿到的内容，让上层继续展示旧图，
+                                // 绝不把「验证码刷新失败」升级成登录失败
+                                if (retry >= 4) break
                             }
                             if (retry < 4) delay(600)
                         }
@@ -499,19 +536,65 @@ class ZhengfangClient {
 
             if (!currentCoroutineContext().isActive) throw CancellationException()
 
-            val errorMsg = checkLoginError(loginBody2)
+            var errorMsg = checkLoginError(loginBody2)
+            if (errorMsg != null && captchaCode.isNotEmpty()) {
+                // 降级重试：很多学校正常登录不需要验证码（探测误判/仅错误密码时才触发验证码）。
+                // 本次带了验证码仍失败时，用不带验证码的方式再试一次，避免误判导致登录卡死。
+                val fallbackBody = if (school.isV8 || csrftoken.isNotEmpty()) {
+                    buildString {
+                        if (csrftoken.isNotEmpty()) {
+                            append("csrftoken=").append(urlEncode(csrftoken))
+                            append("&")
+                        }
+                        append("yhm=").append(urlEncode(username))
+                        append("&mm=").append(urlEncode(encryptedPwd))
+                        append("&language=zh_CN")
+                    }
+                } else {
+                    buildString {
+                        if (viewState.isNotEmpty()) {
+                            append("__VIEWSTATE=").append(urlEncode(viewState)).append("&")
+                        }
+                        if (viewStateGenerator.isNotEmpty()) {
+                            append("__VIEWSTATEGENERATOR=").append(urlEncode(viewStateGenerator)).append("&")
+                        }
+                        if (eventValidation.isNotEmpty()) {
+                            append("__EVENTVALIDATION=").append(urlEncode(eventValidation)).append("&")
+                        }
+                        append("txtUserName=").append(urlEncode(username)).append("&")
+                        append("TextBox2=").append(urlEncode(encryptedPwd))
+                        append("&RadioButtonList1=%D1%A7%C9%FA")
+                        append("&Button1=")
+                    }
+                }
+                val fallbackBody2 = post(loginPostUrl, fallbackBody).use { it.body?.string() ?: "" }
+                if (!currentCoroutineContext().isActive) throw CancellationException()
+                val fallbackError = checkLoginError(fallbackBody2)
+                if (fallbackError == null) {
+                    // 无验证码登录成功：该校确实不需要验证码，采用本次结果
+                    onProgress("无需验证码，已直接登录")
+                    errorMsg = null
+                }
+                // 降级仍失败：保留原始错误（该校确实要求验证码，提示用户重新输入）
+            }
             if (errorMsg != null) return@withContext LoginResult(false, errorMsg)
 
-            onProgress("登录成功，正在获取课表...")
-            // 总 deadline：即使服务器缓慢，整个课表抓取也在 120s 内结束，杜绝 30 分钟空转
-            val courses = withTimeout(120_000) {
-                if (school.isV8) {
-                    fetchScheduleV8(baseUrl, username, onProgress)
-                } else {
-                    fetchScheduleLegacy(baseUrl, username, onProgress)
+            val courses: List<CourseEntity>?
+            if (fetchSchedule) {
+                onProgress("登录成功，正在获取课表...")
+                // 总 deadline：即使服务器缓慢，整个课表抓取也在 120s 内结束，杜绝 30 分钟空转
+                courses = withTimeout(120_000) {
+                    if (school.isV8) {
+                        fetchScheduleV8(baseUrl, username, onProgress)
+                    } else {
+                        fetchScheduleLegacy(baseUrl, username, onProgress)
+                    }
                 }
+                if (courses.isEmpty()) return@withContext LoginResult(false, "未能获取课表数据，可能本学期未选课或课表为空")
+            } else {
+                // 只登录场景：不拉课表，courses 保持 null
+                courses = null
             }
-            if (courses.isEmpty()) return@withContext LoginResult(false, "未能获取课表数据，可能本学期未选课或课表为空")
 
             LoginResult(
                 true,
@@ -560,22 +643,43 @@ class ZhengfangClient {
             "xn={xnm}&xq={xqm}"
         )
 
+        val totalAttempts = apiUrlPatterns.size * bodyTemplates.size * semesterPairs.size
+        var attempt = 0
         var lastBody = ""
         // 熔断：连续 3 次网络异常立即停止并抛出真实错误，避免百次请求空转 30 分钟
         var consecutiveNetworkErrors = 0
+
+        // 成功组合记忆（ZhengfangImportMemory）：上次该校导入成功的 (URL 模式, body 模板)
+        // 优先试，命中则 1 次请求完成；失败自动回退全量试错并更新记忆。
+        val memory = ZhengfangImportMemory.load(baseUrl)
+        var memoryPhase = memory != null // true=只试记忆组合；试完后切 false 走全量
+        fun isMemoryCombo(pattern: String, tmpl: String): Boolean =
+            memory != null && pattern == memory.first && tmpl == memory.second
+
         for (apiPattern in apiUrlPatterns) {
             for (bodyTmpl in bodyTemplates) {
+                if (memoryPhase) {
+                    // 记忆阶段：只请求记忆组合，其余跳过（不产生网络请求）
+                    if (!isMemoryCombo(apiPattern, bodyTmpl)) continue
+                } else {
+                    // 全量阶段：跳过已试过的记忆组合，避免重复请求
+                    if (isMemoryCombo(apiPattern, bodyTmpl)) continue
+                }
                 for ((sn, sq) in semesterPairs) {
                     if (!currentCoroutineContext().isActive) return emptyList()
                     val url = apiPattern
                     val body = bodyTmpl.replace("{xnm}", sn).replace("{xqm}", sq).replace("{xsdm}", username).replace("{xh}", username)
+                    attempt++
+                    onProgress("正在请求课表接口 ($attempt/$totalAttempts)...")
                     val respBody = try {
                         post(url, body).use { it.body?.string() ?: "" }
                     } catch (e: IOException) {
                         consecutiveNetworkErrors++
+                        if (memoryPhase) memoryPhase = false // 记忆组合失败，回退全量
                         if (consecutiveNetworkErrors >= 3) throw e
                         continue
                     } catch (_: Exception) {
+                        if (memoryPhase) memoryPhase = false
                         continue
                     }
                     consecutiveNetworkErrors = 0
@@ -585,8 +689,12 @@ class ZhengfangClient {
                     if (courses.isNotEmpty()) {
                         // 仅在解析出课程时更新学期信息，避免被空响应/上学期响应覆盖成错误开学日
                         lastSemesterInfo = parseZhengfangSemester(respBody)
+                        ZhengfangImportMemory.save(baseUrl, apiPattern, bodyTmpl)
+                        android.util.Log.d("ZhengfangClient",
+                            "schedule fetched in $attempt request(s) via API url=${apiPattern.substringAfter(baseUrl)} body=${bodyTmpl.take(48)}")
                         return courses
                     }
+                    if (memoryPhase) memoryPhase = false // 记忆组合已试完（未成功），切全量
 
                     val looksLikeJson = respBody.trimStart().startsWith("{") || respBody.trimStart().startsWith("[")
                     if (looksLikeJson && respBody.length > 100) {
@@ -602,6 +710,9 @@ class ZhengfangClient {
                         if (courses.isEmpty()) courses = ZhengfangHtmlParser.parseHtmlScheduleTable(respBody)
                         if (courses.isNotEmpty()) {
                             lastSemesterInfo = parseZhengfangSemester(respBody)
+                            ZhengfangImportMemory.save(baseUrl, apiPattern, bodyTmpl)
+                            android.util.Log.d("ZhengfangClient",
+                                "schedule fetched in $attempt request(s) via HTML fallback url=${apiPattern.substringAfter(baseUrl)}")
                             return courses
                         }
                     }

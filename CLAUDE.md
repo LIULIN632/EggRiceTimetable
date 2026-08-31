@@ -7,8 +7,13 @@
 ## 项目身份
 
 - **路径** `D:\AICAN\danchaofankechengbiao\`
-- **APK** `蛋炒饭课程表_vX.X.apk`
+- **APK** `蛋炒饭课程表_vX.Y.Z.apk`
 - **类型** Android 原生 · Kotlin + Compose + Material3 · 底部 2 tab: 课程 / 我的
+
+## 版本规范
+
+- 三段式 `主.次.补丁`（如 `11.0.0`），每次打包 Patch 自动 +1
+- 每段上限 **99**（如 `1.99.99`）；补丁满 99 进位次版本，次版本满 99 进位主版本
 
 ## 技术栈
 
@@ -31,6 +36,15 @@ GET 登录页 → 提取 token → RSA 加密 → 验证码(手动输入+刷新)
 ```
 
 OkHttp 优先；WebView 仅备用兼容。
+
+### 正方查询功能（成绩/修课情况/成绩存档）
+
+- `loginOnly()` 只登录不拉课表，复用同一 `ZhengfangClient` 会话
+- 成绩: `ZhengfangGradeApi`（cjcx_cxDgXscj）· 修课情况: `ZhengfangAcademicApi`（xsxy）
+- 解析公共工具统一在 `ZhengfangUtils`（会话失效判断/学期标签/JSON 字段别名容错）
+- 登录/选校/验证码流程去重: `ui/zhengfang/`（抽象基类 `ZhengfangLoginViewModel` + 共享 UI `ZhengfangLoginUi`），新增同类查询页必须继承复用，禁止复制粘贴
+- 成绩存档: `SavedGradeEntity`（唯一索引 课程+学期+总评 去重）
+- 导入提速: `ZhengfangImportMemory` 记住学校成功接口组合（TTL 30 天）
 
 ## 构建
 

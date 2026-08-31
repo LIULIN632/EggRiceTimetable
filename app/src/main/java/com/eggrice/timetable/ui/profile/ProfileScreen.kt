@@ -172,7 +172,10 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                 }
             },
             repository = app.repository,
-            schemeId = container.activeSchemeId.value
+            schemeId = container.activeSchemeId.value,
+            zhengfangClient = container.zhengfangClient,
+            schoolRegistry = container.schoolRegistry,
+            appContainer = container
         )
         return
     }

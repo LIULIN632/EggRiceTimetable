@@ -18,7 +18,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.eggrice.timetable.data.SchoolRegistry
 import com.eggrice.timetable.data.repository.CourseRepository
+import com.eggrice.timetable.di.AppContainer
+import com.eggrice.timetable.network.ZhengfangClient
 import com.eggrice.timetable.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -27,7 +30,10 @@ fun TreasureBoxScreen(
     onBack: () -> Unit,
     onImportCourse: (courseName: String, teacher: String, room: String, day: Int, startSlot: Int, endSlot: Int) -> Unit,
     repository: CourseRepository,
-    schemeId: Long
+    schemeId: Long,
+    zhengfangClient: ZhengfangClient,
+    schoolRegistry: SchoolRegistry,
+    appContainer: AppContainer
 ) {
     val colors = LocalEggRiceColors.current
     val tasks by repository.getTasksByScheme(schemeId).collectAsState(initial = emptyList())
@@ -39,6 +45,8 @@ fun TreasureBoxScreen(
     var showGoodItemList by remember { mutableStateOf(false) }
     var showTreeHole by remember { mutableStateOf(false) }
     var showTeacherLookup by remember { mutableStateOf(false) }
+    var showGradesHub by remember { mutableStateOf(false) }
+    var showAcademicQuery by remember { mutableStateOf(false) }
 
     if (showLearningPage) {
         LearningResourcePage(
@@ -80,6 +88,24 @@ fun TreasureBoxScreen(
             onBack = { showTeacherLookup = false },
             repository = repository,
             schemeId = schemeId
+        )
+        return
+    }
+    if (showGradesHub) {
+        GradesHubScreen(
+            onBack = { showGradesHub = false },
+            client = zhengfangClient,
+            schoolRegistry = schoolRegistry,
+            appContainer = appContainer
+        )
+        return
+    }
+    if (showAcademicQuery) {
+        AcademicQueryScreen(
+            onBack = { showAcademicQuery = false },
+            client = zhengfangClient,
+            schoolRegistry = schoolRegistry,
+            appContainer = appContainer
         )
         return
     }
@@ -160,9 +186,25 @@ fun TreasureBoxScreen(
             // ── Card 6: 查询老师办公室 ──
             ToolCard(
                 title = "查询老师办公室",
-                subtitle = "查看任课教师的办公地点和联系方式",
+                subtitle = "查看任课教师的办公地点和联系方式（试验阶段）",
                 bgColor = Color(0xFF8B95A8),
                 onClick = { showTeacherLookup = true }
+            )
+
+            // ── Card 7: 课程与成绩（合并：课程管理 + 成绩查询）──
+            ToolCard(
+                title = "课程与成绩",
+                subtitle = "课程管理 · 成绩查询（试验阶段）",
+                bgColor = Color(0xFF7D9B76),
+                onClick = { showGradesHub = true }
+            )
+
+            // ── Card 8: 修课情况查询 ──
+            ToolCard(
+                title = "修课情况查询",
+                subtitle = "已修课程 · 学分 · 绩点统计（试验阶段）",
+                bgColor = Color(0xFF9C88B2),
+                onClick = { showAcademicQuery = true }
             )
         }
     }

@@ -5,6 +5,7 @@ import com.eggrice.timetable.data.database.TimetableDatabase
 import com.eggrice.timetable.data.repository.CourseRepository
 import com.eggrice.timetable.di.AppContainer
 import com.eggrice.timetable.network.CookieStore
+import com.eggrice.timetable.network.ZhengfangImportMemory
 import com.eggrice.timetable.util.CrashHandler
 
 class TimetableApplication : Application() {
@@ -17,5 +18,6 @@ class TimetableApplication : Application() {
         super.onCreate()
         crashHandler = CrashHandler(this)
         CookieStore.init(this)
+        ZhengfangImportMemory.init(this)
     }
 }

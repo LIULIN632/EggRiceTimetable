@@ -8,6 +8,7 @@ import androidx.security.crypto.MasterKey
 import com.eggrice.timetable.TimetableApplication
 import com.eggrice.timetable.data.School
 import com.eggrice.timetable.data.SchoolRegistry
+import com.eggrice.timetable.data.dao.SavedGradeDao
 import com.eggrice.timetable.data.repository.CourseRepository
 import com.eggrice.timetable.network.QiangZhiClient
 import com.eggrice.timetable.network.ZhengfangClient
@@ -24,6 +25,7 @@ class AppContainer(context: Context) {
     val zhengfangClient by lazy { ZhengfangClient() }
     val qiangzhiClient by lazy { QiangZhiClient() }
     val schoolRegistry by lazy { SchoolRegistry(context) }
+    val savedGradeDao: SavedGradeDao by lazy { app.database.savedGradeDao() }
 
     private val prefs = context.getSharedPreferences("egg_rice_prefs", Context.MODE_PRIVATE)
 
@@ -61,6 +63,23 @@ class AppContainer(context: Context) {
         val current = _customSchools.value.toMutableList()
         current.removeAll { it.baseUrl.equals(school.baseUrl, ignoreCase = true) }
         current.add(0, school)
+        _customSchools.value = current
+        prefs.edit().putString("custom_schools", gson.toJson(current)).apply()
+    }
+
+    /** 更新自定义学校（编辑保存，按 id 定位） */
+    fun updateCustomSchool(old: School, new: School) {
+        val current = _customSchools.value.toMutableList()
+        val idx = current.indexOfFirst { it.id == old.id }
+        if (idx >= 0) current[idx] = new
+        _customSchools.value = current
+        prefs.edit().putString("custom_schools", gson.toJson(current)).apply()
+    }
+
+    /** 删除自定义学校 */
+    fun removeCustomSchool(school: School) {
+        val current = _customSchools.value.toMutableList()
+        current.removeAll { it.id == school.id }
         _customSchools.value = current
         prefs.edit().putString("custom_schools", gson.toJson(current)).apply()
     }

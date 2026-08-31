@@ -10,20 +10,23 @@ import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.entity.GoodItemEntity
 import com.eggrice.timetable.data.entity.HomeworkEntity
 import com.eggrice.timetable.data.entity.TreeHoleEntity
+import com.eggrice.timetable.data.entity.SavedGradeEntity
 import com.eggrice.timetable.data.entity.SchemeEntity
 import com.eggrice.timetable.data.entity.TaskEntity
 import com.eggrice.timetable.data.entity.TimeSlotEntity
 import com.eggrice.timetable.data.entity.TeacherEntity
 import com.eggrice.timetable.data.dao.CourseDao
+import com.eggrice.timetable.data.dao.SavedGradeDao
 import com.eggrice.timetable.data.dao.TeacherDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [CourseEntity::class, TimeSlotEntity::class, SchemeEntity::class, HomeworkEntity::class, TaskEntity::class, GoodItemEntity::class, TreeHoleEntity::class, TeacherEntity::class], version = 10, exportSchema = false)
+@Database(entities = [CourseEntity::class, TimeSlotEntity::class, SchemeEntity::class, HomeworkEntity::class, TaskEntity::class, GoodItemEntity::class, TreeHoleEntity::class, TeacherEntity::class, SavedGradeEntity::class], version = 11, exportSchema = false)
 abstract class TimetableDatabase : RoomDatabase() {
     abstract fun courseDao(): CourseDao
     abstract fun teacherDao(): TeacherDao
+    abstract fun savedGradeDao(): SavedGradeDao
 
     companion object {
         @Volatile private var INSTANCE: TimetableDatabase? = null
@@ -87,6 +90,31 @@ abstract class TimetableDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // saved_grades：已修课程成绩存档（列与 SavedGradeEntity 精确一致，Room 校验要求）
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS saved_grades (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "courseName TEXT NOT NULL, " +
+                        "totalScore TEXT NOT NULL, " +
+                        "credits TEXT NOT NULL, " +
+                        "gpa TEXT NOT NULL, " +
+                        "regular TEXT NOT NULL, " +
+                        "final TEXT NOT NULL, " +
+                        "midterm TEXT NOT NULL, " +
+                        "examType TEXT NOT NULL, " +
+                        "termLabel TEXT NOT NULL, " +
+                        "schoolName TEXT NOT NULL, " +
+                        "savedAt INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_saved_grades_courseName_termLabel_totalScore " +
+                        "ON saved_grades(courseName, termLabel, totalScore)"
+                )
+            }
+        }
+
         /** Ensure default scheme exists on fresh installs (DB created at v4, no migration runs). */
         private val CALLBACK = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -110,7 +138,7 @@ abstract class TimetableDatabase : RoomDatabase() {
         fun getInstance(context: Context): TimetableDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(context, TimetableDatabase::class.java, "timetable.db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     .addCallback(CALLBACK)
                     .build().also { INSTANCE = it }
             }

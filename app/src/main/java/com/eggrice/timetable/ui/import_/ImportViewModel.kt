@@ -116,6 +116,23 @@ class ImportViewModel(
         return school
     }
 
+    /** 编辑自定义学校（按 id 定位更新），返回更新后的学校；输入无效返回 null */
+    fun updateCustomSchool(old: School, name: String, url: String): School? {
+        val trimmedUrl = url.trim().trimEnd('/')
+        if (name.isBlank() || trimmedUrl.isBlank()) return null
+        val updated = old.copy(
+            name = name.trim(),
+            baseUrl = if (trimmedUrl.startsWith("http")) trimmedUrl else "https://$trimmedUrl"
+        )
+        appContainer.updateCustomSchool(old, updated)
+        return updated
+    }
+
+    /** 删除自定义学校 */
+    fun removeCustomSchool(school: School) {
+        appContainer.removeCustomSchool(school)
+    }
+
     // ── Credential memory ──
     fun loadSavedCredentials(baseUrl: String): Pair<String, String>? =
         appContainer.loadCredential(baseUrl)
