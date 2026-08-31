@@ -732,6 +732,25 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
                             fontWeight = FontWeight.Bold
                         )
                     }
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
+                    // 更新日志入口：与「检查更新」保持独立功能（检查=查版本/学校索引，日志=看历史记录）
+                    TextButton(
+                        onClick = {
+                            showUpdateDialog = false
+                            showChangelog = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Filled.History,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = colors.textSecondary
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("查看更新日志（版本历史）", fontSize = 13.sp, color = colors.textSecondary)
+                    }
                 }
             },
             confirmButton = {
