@@ -11,28 +11,34 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 学校索引（JSON）热更新——对齐时光课表 GitUpdater 的经验，用 OkHttp 简化实现：
+ * - 多镜像回退：国内网络可达性差异大（jsDelivr 常被墙），按序尝试多个镜像，第一个 200 生效
  * - 协议版本校验：远程 `protocol_version` > 客户端 → 忽略（需升级 App）
  * - 数据版本校验：`version_id` 用 `TIME_YYYYMMDDHHMMSS_XXX` 时间戳字符串字典序比较；
  *   远程更旧视为数据异常，拒绝写入（防回退）
  * - 延迟写入：先下载到内存、校验通过再写入 filesDir（临时文件 + rename 原子替换），
  *   半成品/损坏索引不会落盘
  *
- * 索引由 tools/generate_school_index.ps1 生成，经 GitHub 仓库 + jsDelivr CDN 分发：
- * https://cdn.jsdelivr.net/gh/LIULIN632/EggRiceTimetable@main/school_index.json
+ * 索引由 tools/generate_school_index.ps1 生成，提交到 GitHub 仓库默认分支（master）后经镜像分发。
  */
 class SchoolIndexUpdater(context: Context) {
 
     companion object {
         const val CLIENT_PROTOCOL_VERSION = 1
-        const val INDEX_URL = "https://cdn.jsdelivr.net/gh/LIULIN632/EggRiceTimetable@main/school_index.json"
+        /** 多镜像回退链（注意：仓库默认分支是 master，不是 main） */
+        val INDEX_URLS = listOf(
+            "https://raw.githubusercontent.com/LIULIN632/EggRiceTimetable/master/school_index.json",
+            "https://cdn.jsdelivr.net/gh/LIULIN632/EggRiceTimetable@master/school_index.json",
+            "https://fastly.jsdelivr.net/gh/LIULIN632/EggRiceTimetable@master/school_index.json",
+            "https://gcore.jsdelivr.net/gh/LIULIN632/EggRiceTimetable@master/school_index.json"
+        )
         private const val INDEX_DIR = "school_index"
         private const val INDEX_FILE = "school_index.json"
     }
 
     private val appContext = context.applicationContext
     private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
     sealed class Result {
@@ -43,15 +49,27 @@ class SchoolIndexUpdater(context: Context) {
 
     /** 拉取并校验远程索引，通过后原子写入本地（阻塞调用，放 IO 线程） */
     fun update(): Result {
-        val remoteJson: String = try {
-            client.newCall(Request.Builder().url(INDEX_URL).build()).execute().use { resp ->
-                if (!resp.isSuccessful) return Result.Failed("网络错误（HTTP ${resp.code}）")
-                resp.body?.string() ?: return Result.Failed("响应为空")
+        // 多镜像按序尝试，第一个拿到有效响应的生效
+        var lastError = "无法连接索引服务器"
+        for (url in INDEX_URLS) {
+            val json = try {
+                client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        lastError = "网络错误（HTTP ${resp.code}）"
+                        null
+                    } else resp.body?.string()
+                }
+            } catch (e: Exception) {
+                lastError = "无法连接索引服务器"
+                null
             }
-        } catch (e: Exception) {
-            return Result.Failed("无法连接索引服务器")
+            if (json != null) return writeIfNewer(json)
         }
+        return Result.Failed(lastError)
+    }
 
+    /** 解析 + 版本校验 + 延迟写入 */
+    private fun writeIfNewer(remoteJson: String): Result {
         val remote = runCatching { Gson().fromJson(remoteJson, SchoolIndex::class.java) }.getOrNull()
             ?: return Result.Failed("索引数据解析失败")
 
