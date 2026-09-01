@@ -1,6 +1,7 @@
 package com.eggrice.timetable.ui.profile
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
@@ -10,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.eggrice.timetable.TimetableApplication
 import com.eggrice.timetable.data.entity.CourseEntity
 import com.eggrice.timetable.data.entity.SchemeEntity
+import com.eggrice.timetable.network.AppUpdateChecker
 import com.eggrice.timetable.network.SchoolIndexUpdater
 import com.eggrice.timetable.ui.import_.ImportScreen
 import com.eggrice.timetable.ui.import_.PdfImportScreen
@@ -70,6 +74,10 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
     var showUpdateDialog by remember { mutableStateOf(false) }
     var schoolIndexMsg by remember { mutableStateOf<String?>(null) }
     var schoolIndexLoading by remember { mutableStateOf(false) }
+    var appUpdateMsg by remember { mutableStateOf<String?>(null) }
+    var appUpdateLoading by remember { mutableStateOf(false) }
+    var latestReleaseUrl by remember { mutableStateOf<String?>(null) }
+    val appUpdateChecker = remember { AppUpdateChecker() }
     var showSchoolRequestDialog by remember { mutableStateOf(false) }
     var showShareExportDialog by remember { mutableStateOf(false) }
     var showAppearance by remember { mutableStateOf(false) }
@@ -672,67 +680,140 @@ fun ProfileScreen(onSubPageChange: (Boolean) -> Unit = {}, onBack: () -> Unit) {
             text = {
                 Column {
                     Text(
-                        "当前版本：v$versionName\n\n蛋炒饭课程表\n纯净无广告 · 开源课表",
+                        "当前版本：v$versionName\n蛋炒饭课程表 · 纯净无广告 · 开源课表",
                         fontSize = 14.sp
                     )
-                    Spacer(Modifier.height(14.dp))
-                    HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
                     Spacer(Modifier.height(12.dp))
-                    Text("学校列表", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "从 GitHub 拉取最新学校列表（含新增学校与教务地址修正），无需升级 App",
-                        fontSize = 12.sp,
-                        color = colors.textTertiary
-                    )
-                    Spacer(Modifier.height(8.dp))
+                    // GitHub 开源仓库（自更新日志挪入）
+                    GitHubRepoCard()
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
+                    Spacer(Modifier.height(10.dp))
+
+                    // ── 选项 1：更新软件（查 GitHub Releases 对比版本）──
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "更新软件",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = {
+                                if (appUpdateLoading) return@TextButton
+                                appUpdateLoading = true
+                                appUpdateMsg = null
+                                latestReleaseUrl = null
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        appUpdateChecker.checkLatest(versionName)
+                                    }
+                                    when (result) {
+                                        is AppUpdateChecker.Result.Latest -> {
+                                            appUpdateMsg = "发现新版本 v${result.version}"
+                                            latestReleaseUrl = result.url
+                                        }
+                                        AppUpdateChecker.Result.UpToDate -> appUpdateMsg = "已是最新版本"
+                                        is AppUpdateChecker.Result.Failed -> appUpdateMsg = result.message
+                                    }
+                                    appUpdateLoading = false
+                                }
+                            },
+                            enabled = !appUpdateLoading
+                        ) {
+                            if (appUpdateLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = accentColor()
+                                )
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Text(
+                                if (appUpdateLoading) "检查中..." else "检查更新",
+                                fontSize = 13.sp,
+                                color = accentColor()
+                            )
+                        }
+                    }
+                    if (appUpdateMsg != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                appUpdateMsg!!,
+                                fontSize = 12.sp,
+                                color = if (appUpdateMsg!!.startsWith("发现新版本")) SuccessGreen else colors.textSecondary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (latestReleaseUrl != null) {
+                                TextButton(onClick = {
+                                    try {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(latestReleaseUrl)))
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "无法打开浏览器", Toast.LENGTH_SHORT).show()
+                                    }
+                                }) {
+                                    Text("去下载", fontSize = 12.sp, color = accentColor())
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+
+                    // ── 选项 2：更新学校列表 ──
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "更新学校列表",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = {
+                                if (schoolIndexLoading) return@TextButton
+                                schoolIndexLoading = true
+                                schoolIndexMsg = null
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        container.schoolIndexUpdater.update()
+                                    }
+                                    when (result) {
+                                        is SchoolIndexUpdater.Result.Updated -> {
+                                            container.schoolRegistry.reload()
+                                            schoolIndexMsg = "已更新：${result.versionId}，共 ${result.schoolCount} 所学校"
+                                        }
+                                        SchoolIndexUpdater.Result.UpToDate -> schoolIndexMsg = "学校列表已是最新"
+                                        is SchoolIndexUpdater.Result.Failed -> schoolIndexMsg = result.message
+                                    }
+                                    schoolIndexLoading = false
+                                }
+                            },
+                            enabled = !schoolIndexLoading
+                        ) {
+                            if (schoolIndexLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = accentColor()
+                                )
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Text(
+                                if (schoolIndexLoading) "更新中..." else "更新",
+                                fontSize = 13.sp,
+                                color = accentColor()
+                            )
+                        }
+                    }
                     if (schoolIndexMsg != null) {
                         Text(
                             schoolIndexMsg!!,
                             fontSize = 12.sp,
                             color = if (schoolIndexMsg!!.startsWith("已更新")) SuccessGreen else colors.textSecondary
                         )
-                        Spacer(Modifier.height(8.dp))
                     }
-                    Button(
-                        onClick = {
-                            if (schoolIndexLoading) return@Button
-                            schoolIndexLoading = true
-                            schoolIndexMsg = null
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) {
-                                    container.schoolIndexUpdater.update()
-                                }
-                                when (result) {
-                                    is SchoolIndexUpdater.Result.Updated -> {
-                                        container.schoolRegistry.reload()
-                                        schoolIndexMsg = "已更新：${result.versionId}，共 ${result.schoolCount} 所学校"
-                                    }
-                                    SchoolIndexUpdater.Result.UpToDate -> schoolIndexMsg = "学校列表已是最新"
-                                    is SchoolIndexUpdater.Result.Failed -> schoolIndexMsg = result.message
-                                }
-                                schoolIndexLoading = false
-                            }
-                        },
-                        enabled = !schoolIndexLoading,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor())
-                    ) {
-                        if (schoolIndexLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = Color.White
-                            )
-                            Spacer(Modifier.width(6.dp))
-                        }
-                        Text(
-                            if (schoolIndexLoading) "更新中..." else "更新学校列表",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(6.dp))
                     HorizontalDivider(color = colors.borderDivider, thickness = 0.5.dp)
                     // 更新日志入口：与「检查更新」保持独立功能（检查=查版本/学校索引，日志=看历史记录）
                     TextButton(
@@ -1130,6 +1211,72 @@ private fun exportToCalendar(
         }
         withContext(kotlinx.coroutines.Dispatchers.Main) {
             android.widget.Toast.makeText(context, result, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+// ── GitHub 开源仓库卡片（原更新日志顶部，已挪入「检查更新」弹窗）──
+
+private const val GITHUB_REPO_URL = "https://github.com/LIULIN632/EggRiceTimetable"
+
+@Composable
+private fun GitHubRepoCard() {
+    val colors = LocalEggRiceColors.current
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_REPO_URL)))
+                } catch (_: Exception) {
+                    Toast.makeText(context, "无法打开浏览器", Toast.LENGTH_SHORT).show()
+                }
+            },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF24292F)
+            ) {
+                Icon(
+                    Icons.Filled.Code,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "GitHub 开源仓库",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    GITHUB_REPO_URL.removePrefix("https://"),
+                    fontSize = 12.sp,
+                    color = colors.textTertiary
+                )
+            }
+            Text(
+                "打开",
+                fontSize = 13.sp,
+                color = accentColor(),
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
