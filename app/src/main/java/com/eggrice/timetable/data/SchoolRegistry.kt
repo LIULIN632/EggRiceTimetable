@@ -43,10 +43,15 @@ class SchoolRegistry(private val context: Context) {
     private var localIndex: SchoolIndex? = null
 
     fun getSchools(type: JwSystemType): List<School> = schoolsCache.getOrPut(type) {
-        loadIndexSchools(type).ifEmpty { loadSchoolsFromAsset(type) }
+        try {
+            loadIndexSchools(type).ifEmpty { loadSchoolsFromAsset(type) }
+        } catch (e: Exception) {
+            // 索引/解析任何异常都不允许崩 UI → 回退内置 assets
+            Log.e("SchoolRegistry", "Index load failed for ${type.name}, fallback to asset: ${e.message}", e)
+            loadSchoolsFromAsset(type)
+        }
     }
 
-    /** 索引更新后调用：清空按类型缓存，下次读取走新索引 */
     fun reload() {
         synchronized(schoolsCache) {
             schoolsCache.clear()
@@ -54,20 +59,27 @@ class SchoolRegistry(private val context: Context) {
         }
     }
 
-    /** 本地热更新索引中的学校（仅当索引版本存在且该类型有数据） */
+    /** 本地热更新索引中的学校（仅当索引版本存在且该类型有数据）；任何异常回退空列表走 assets */
     private fun loadIndexSchools(type: JwSystemType): List<School> {
-        val index = localIndex ?: SchoolIndexUpdater(context).loadLocalIndex()?.also { localIndex = it }
-            ?: return emptyList()
-        val list = index.schools[type.name.lowercase()] ?: return emptyList()
-        return list.map { raw ->
-            School(
-                id = raw.id,
-                name = raw.name,
-                city = raw.city,
-                jwType = parseJwType(raw.jwType),
-                baseUrl = raw.baseUrl,
-                isV8 = raw.isV8 ?: true
-            )
+        return try {
+            val index = localIndex ?: SchoolIndexUpdater(context).loadLocalIndex()?.also { localIndex = it }
+                ?: return emptyList()
+            val list = index.schools?.get(type.name.lowercase()) ?: return emptyList()
+            list.mapNotNull { raw ->
+                // 空字段防御：Gson 不填 Kotlin 默认值，缺字段会得到 null，逐字段兜底
+                if (raw.id.isNullOrBlank() || raw.name.isNullOrBlank()) return@mapNotNull null
+                School(
+                    id = raw.id,
+                    name = raw.name,
+                    city = raw.city ?: "",
+                    jwType = parseJwType(raw.jwType),
+                    baseUrl = raw.baseUrl ?: "",
+                    isV8 = raw.isV8 ?: true
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("SchoolRegistry", "loadIndexSchools failed for ${type.name}: ${e.message}", e)
+            emptyList()
         }
     }
 

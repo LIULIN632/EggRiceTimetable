@@ -100,12 +100,23 @@ class SchoolIndexUpdater(context: Context) {
         }
     }
 
-    /** 读取本地已生效的索引（无则返回 null） */
-    fun loadLocalIndex(): SchoolIndex? = try {
+    /** 读取本地已生效的索引（无则返回 null；结构性损坏的文件自愈删除） */
+    fun loadLocalIndex(): SchoolIndex? {
         val f = File(File(appContext.filesDir, INDEX_DIR), INDEX_FILE)
-        if (!f.exists()) null else Gson().fromJson(f.readText(), SchoolIndex::class.java)
-    } catch (_: Exception) {
-        null
+        if (!f.exists()) return null
+        return try {
+            val idx = Gson().fromJson(f.readText(), SchoolIndex::class.java)
+            if (idx.schools == null) {
+                // Gson 不给 Kotlin 默认值：缺 schools 字段 = 结构损坏 → 删除，等下次重新拉取
+                android.util.Log.w("SchoolIndexUpdater", "本地索引结构损坏(schools=null)，已删除待重新拉取")
+                f.delete()
+                null
+            } else idx
+        } catch (e: Exception) {
+            android.util.Log.w("SchoolIndexUpdater", "本地索引解析失败，已删除: ${e.message}")
+            f.delete()
+            null
+        }
     }
 }
 
