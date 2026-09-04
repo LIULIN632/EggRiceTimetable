@@ -52,6 +52,7 @@ import com.eggrice.timetable.ui.timetable.components.HomeworkListDialog
 import com.eggrice.timetable.ui.timetable.components.AddHomeworkDialog
 import com.eggrice.timetable.ui.timetable.components.TaskPreviewDialog
 import com.eggrice.timetable.ui.profile.SemesterSettingsPage
+import com.eggrice.timetable.ui.components.SemesterCalibrateDialog
 import com.eggrice.timetable.ui.components.TimetableEmptyState
 import com.eggrice.timetable.ui.theme.*
 import com.eggrice.timetable.util.parseSemesterStart
@@ -135,6 +136,7 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     var showTaskPreview by remember { mutableStateOf(false) }
     var showSemesterSettings by remember { mutableStateOf(false) }
     var showWeekPicker by remember { mutableStateOf(false) }
+    val calibrationPending by container.calibrationPending.collectAsState()
 
     val pendingTasks = remember(allTasks) { allTasks.filter { !it.completed } }
     val pendingCount = pendingTasks.size
@@ -142,6 +144,14 @@ fun TimetableScreen(onSubPageChange: (Boolean) -> Unit = {}) {
     // Hide bottom nav + handle system back when semester settings is open
     LaunchedEffect(showSemesterSettings) { onSubPageChange(showSemesterSettings) }
     BackHandler(enabled = showSemesterSettings) { showSemesterSettings = false }
+
+    // 导入课表后若学期开学日期缺失 → 弹出周次校准引导
+    if (calibrationPending) {
+        SemesterCalibrateDialog(
+            container = container,
+            onDismiss = { container.clearSemesterCalibration() }
+        )
+    }
 
     // 周次快速跳转选择器（点击顶部「第N周」弹出）
     if (showWeekPicker) {

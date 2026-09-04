@@ -245,6 +245,11 @@ class ImportViewModel(
                             appContainer.setSemesterWeeks(res.semesterWeeks!!)
                         }
                     }
+                    // 教务未返回学期信息且用户未设过开学日期 → 课表周次会对不上，
+                    // 标记后由课表页弹出「学期周次校准」引导（选当前是第几周反推开学日期）
+                    if (appContainer.semesterStart.value.isBlank()) {
+                        appContainer.requestSemesterCalibration()
+                    }
                 }
             } catch (e: CancellationException) {
                 // ViewModel scope cancelled — ignore silently, this is normal

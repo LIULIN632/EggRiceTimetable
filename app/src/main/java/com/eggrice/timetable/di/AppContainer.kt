@@ -249,6 +249,13 @@ class AppContainer(context: Context) {
     val semesterWeeks: StateFlow<Int> = _semesterWeeks
     fun setSemesterWeeks(value: Int) { setInt("semester_weeks", value, _semesterWeeks) }
 
+    // ── 导入后学期校准引导信号：课表页弹出「当前是第几周」校准（导入未带学期信息时置位）──
+    private val _calibrationPending = MutableStateFlow(false)
+    val calibrationPending: StateFlow<Boolean> = _calibrationPending
+
+    fun requestSemesterCalibration() { _calibrationPending.value = true }
+    fun clearSemesterCalibration() { _calibrationPending.value = false }
+
     // ── Cross-tab navigation signal: Homework ──
     private val _pendingShowHomework = MutableStateFlow(false)
     val pendingShowHomework: StateFlow<Boolean> = _pendingShowHomework

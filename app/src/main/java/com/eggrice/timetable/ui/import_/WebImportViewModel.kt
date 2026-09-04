@@ -943,6 +943,11 @@ class WebImportViewModel(
         }
         if (newCourses.isNotEmpty()) {
             repository.insertAll(newCourses)
+            // Web 导入不携带学期信息 → 若用户未设过开学日期，课表周次会对不上；
+            // 标记后由课表页弹出「学期周次校准」引导
+            if (appContainer.semesterStart.value.isBlank()) {
+                appContainer.requestSemesterCalibration()
+            }
         }
         return newCourses.size
     }
