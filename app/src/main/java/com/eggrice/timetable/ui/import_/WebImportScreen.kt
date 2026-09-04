@@ -244,11 +244,11 @@ fun WebImportScreen(
                         }
                     } else if (freeUrlActive) {
                         Column {
-                            Text("通用导入", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("自定义网址导入", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             Text(pageTitle, fontSize = 11.sp, color = colors.textTertiary, maxLines = 1)
                         }
                     } else {
-                        Text("WebView导入", fontWeight = FontWeight.Bold)
+                        Text("网页教务导入", fontWeight = FontWeight.Bold)
                     }
                 },
                 navigationIcon = {

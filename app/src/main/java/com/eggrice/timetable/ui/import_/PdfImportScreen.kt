@@ -131,7 +131,7 @@ fun PdfImportScreen(
                         Spacer(Modifier.height(8.dp))
                         GuidanceStep("2", "截图课表，交给AI识图", "让AI生成HTML表格，复制后使用「HTML导入」")
                         Spacer(Modifier.height(8.dp))
-                        GuidanceStep("3", "推荐：WebView导入教务系统", "一键登录，自动导入，无需处理文件格式")
+                        GuidanceStep("3", "推荐：网页教务导入", "一键登录，自动导入，无需处理文件格式")
                     }
                 }
 

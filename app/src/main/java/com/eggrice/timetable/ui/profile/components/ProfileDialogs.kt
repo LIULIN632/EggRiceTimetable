@@ -106,9 +106,9 @@ internal fun JwImportSubDialog(
         },
         text = {
             Column {
-                MenuRow(Icons.Outlined.Public, "WebView教务导入（推荐）", "正方/强智/青果/超星 · Cookie持久化", onClick = onWebImport)
-                MenuRow(Icons.Outlined.Language, "通用导入（自定义地址）", "输入任意教务网址 · 自动适配", onClick = onFreeImport)
-                MenuRow(Icons.Outlined.CloudSync, "原生教务导入（实验性）", "OkHttp直连RSA加密登录 · 部分学校", onClick = onNativeImport)
+                MenuRow(Icons.Outlined.Public, "网页教务导入（推荐）", "打开教务网站登录后自动识别课表 · 正方/强智/青果/超星通用", onClick = onWebImport)
+                MenuRow(Icons.Outlined.Language, "自定义网址导入", "内置列表没有的教务，粘贴网页地址导入", onClick = onFreeImport)
+                MenuRow(Icons.Outlined.CloudSync, "教务直连导入（正方/强智）", "输入账号密码直接获取课表，无需打开网页", onClick = onNativeImport)
             }
         },
         confirmButton = {},
