@@ -43,6 +43,7 @@ import com.eggrice.timetable.data.School
 import com.eggrice.timetable.data.isJwSystemAvailable
 import com.eggrice.timetable.network.ZhengfangSchool
 import com.eggrice.timetable.ui.components.SchoolFavoriteButton
+import com.eggrice.timetable.ui.profile.components.SchoolRequestDialog
 import com.eggrice.timetable.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,6 +80,7 @@ fun ImportScreen(
     var rememberPassword by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
     var showAddCustomSchool by remember { mutableStateOf(false) }
+    var showSchoolRequest by remember { mutableStateOf(false) }
     var customSchoolName by remember { mutableStateOf("") }
     var customSchoolUrl by remember { mutableStateOf("") }
     var pendingCustomSchool by remember { mutableStateOf<School?>(null) }
@@ -229,15 +231,21 @@ fun ImportScreen(
                 }
                 if (filteredSchools.isEmpty()) {
                     item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                            contentAlignment = Alignment.Center
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                if (searchQuery.isEmpty()) "暂无可用学校" else "未找到学校，请尝试其他关键词",
+                                if (searchQuery.isEmpty()) "暂无可用学校" else "未找到「${searchQuery}」",
                                 fontSize = 13.sp,
                                 color = colors.textTertiary
                             )
+                            if (searchQuery.isNotEmpty()) {
+                                Spacer(Modifier.height(6.dp))
+                                TextButton(onClick = { showSchoolRequest = true }) {
+                                    Text("没找到？申请收录这所学校", color = accentColor(), fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
                 } else {
@@ -483,6 +491,15 @@ fun ImportScreen(
                 }
             }
         }
+    }
+
+    // 申请收录学校弹窗（搜索无结果时：预填关键词，走邮件申请）
+    if (showSchoolRequest) {
+        SchoolRequestDialog(
+            context = context,
+            initialName = searchQuery,
+            onDismiss = { showSchoolRequest = false }
+        )
     }
 
     // Add-custom-school dialog（手动添加 / 完善内置未收录地址的学校）

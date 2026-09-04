@@ -42,6 +42,7 @@ import com.eggrice.timetable.TimetableApplication
 import com.eggrice.timetable.data.JwSystemType
 import com.eggrice.timetable.data.School
 import com.eggrice.timetable.ui.components.SchoolFavoriteButton
+import com.eggrice.timetable.ui.profile.components.SchoolRequestDialog
 import com.eggrice.timetable.network.CookieStore
 import com.eggrice.timetable.ui.theme.*
 
@@ -87,6 +88,7 @@ fun WebImportScreen(
     var showUrlEditor by remember { mutableStateOf(false) }
     var urlEditText by remember { mutableStateOf("") }
     var showFreeUrlDialog by remember { mutableStateOf(freeMode) }
+    var showSchoolRequest by remember { mutableStateOf(false) }
     var freeUrlInput by remember { mutableStateOf("") }
     var showCredentialSheet by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(true) }
@@ -450,11 +452,21 @@ fun WebImportScreen(
                     }
                     if (filteredSchools.isEmpty()) {
                         item {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                                contentAlignment = Alignment.Center
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text("未找到学校", fontSize = 13.sp, color = colors.textTertiary)
+                                Text(
+                                    if (searchQuery.isEmpty()) "暂无可用学校" else "未找到「${searchQuery}」",
+                                    fontSize = 13.sp,
+                                    color = colors.textTertiary
+                                )
+                                if (searchQuery.isNotEmpty()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    TextButton(onClick = { showSchoolRequest = true }) {
+                                        Text("没找到？申请收录这所学校", color = accentColor(), fontSize = 13.sp)
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -729,6 +741,15 @@ fun WebImportScreen(
                 }
             }
         }
+    }
+
+    // 申请收录学校弹窗（搜索无结果时：预填关键词，走邮件申请）
+    if (showSchoolRequest) {
+        SchoolRequestDialog(
+            context = context,
+            initialName = searchQuery,
+            onDismiss = { showSchoolRequest = false }
+        )
     }
 
     // ── Add Custom School Dialog (添加自己的学校) ──

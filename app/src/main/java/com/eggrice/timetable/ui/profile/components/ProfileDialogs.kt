@@ -449,8 +449,12 @@ internal fun FeedbackDialog(context: android.content.Context, onDismiss: () -> U
 }
 
 @Composable
-internal fun SchoolRequestDialog(context: android.content.Context, onDismiss: () -> Unit) {
-    var schoolName by remember { mutableStateOf("") }
+internal fun SchoolRequestDialog(
+    context: android.content.Context,
+    onDismiss: () -> Unit,
+    initialName: String = ""
+) {
+    var schoolName by remember { mutableStateOf(initialName) }
     var systemType by remember { mutableStateOf("未知") }
     var expanded by remember { mutableStateOf(false) }
     val systems = listOf("未知", "正方", "强智", "青果", "超星", "其他")
